@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 tokenizers = { version = "=0.23.1", default-features = false, features = ["onig"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 
 [profile.release]
 opt-level = 3

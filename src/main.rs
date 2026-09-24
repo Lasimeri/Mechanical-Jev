@@ -58,9 +58,19 @@ enum Cmd {
         /// Also list every pair.
         #[arg(long)]
         pairs: bool,
+        /// Also find, per question kind, the temperature that brings B closest to A.
+        #[arg(long)]
+        temperature: bool,
     },
     /// The models the server serves.
     Models,
+    /// Jev's published answers as a case file (gold = Jev's answer) and as
+    /// eval rows, to measure how closely a server answers like Jev.
+    Evidence {
+        /// Directory to write evidence-cases.jsonl and evidence-jev-rows.jsonl.
+        #[arg(long, default_value = "target")]
+        out: PathBuf,
+    },
     /// What Jev most likely does with a request, reconstructed from its
     /// documentation (docs/reverse-engineering.md): the document and each
     /// question's branch as the model reads it. Offline; asks nothing.
@@ -93,6 +103,25 @@ fn read_rows(p: &PathBuf) -> Result<Vec<eval::Row>, String> {
 
 fn run() -> Result<(), String> {
     let cli = Cli::parse();
+    if let Cmd::Evidence { out } = &cli.cmd {
+        std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+        let cases: String = mechanical_jev::evidence::cases()
+            .iter()
+            .map(|c| serde_json::to_string(c).unwrap() + "\n")
+            .collect();
+        let rows: String = mechanical_jev::evidence::jev_rows()
+            .iter()
+            .map(|r| serde_json::to_string(r).unwrap() + "\n")
+            .collect();
+        let (cf, rf) = (
+            out.join("evidence-cases.jsonl"),
+            out.join("evidence-jev-rows.jsonl"),
+        );
+        std::fs::write(&cf, cases).map_err(|e| e.to_string())?;
+        std::fs::write(&rf, rows).map_err(|e| e.to_string())?;
+        println!("{}\n{}", cf.display(), rf.display());
+        return Ok(());
+    }
     if let Cmd::Reconstruct { file } = &cli.cmd {
         let req = build_request(file.clone(), None, Vec::new(), Vec::new(), Vec::new())?;
         let plan = reconstruction::compile(&req)?;
@@ -113,12 +142,24 @@ fn run() -> Result<(), String> {
         );
         return Ok(());
     }
-    if let Cmd::Corroborate { a, b, pairs } = &cli.cmd {
-        let mut r = corroborate::compare(&read_rows(a)?, &read_rows(b)?);
+    if let Cmd::Corroborate {
+        a,
+        b,
+        pairs,
+        temperature,
+    } = &cli.cmd
+    {
+        let (ra, rb) = (read_rows(a)?, read_rows(b)?);
+        let mut r = corroborate::compare(&ra, &rb);
         if !pairs {
             r.pairs.clear();
         }
-        println!("{}", serde_json::to_string_pretty(&r).unwrap());
+        let mut v = serde_json::to_value(&r).unwrap();
+        if *temperature {
+            v["temperature"] =
+                serde_json::to_value(corroborate::fit_temperature(&ra, &rb)).unwrap();
+        }
+        println!("{}", serde_json::to_string_pretty(&v).unwrap());
         return Ok(());
     }
     let client = Client::from_env();
@@ -174,7 +215,11 @@ fn run() -> Result<(), String> {
             println!("{}", serde_json::to_string_pretty(&m).unwrap());
             Ok(())
         }
-        Cmd::Corroborate { .. } | Cmd::Reconstruct { .. } | Cmd::Serve | Cmd::Stop => Ok(()),
+        Cmd::Corroborate { .. }
+        | Cmd::Reconstruct { .. }
+        | Cmd::Evidence { .. }
+        | Cmd::Serve
+        | Cmd::Stop => Ok(()),
     }
 }
 

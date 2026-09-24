@@ -40,6 +40,7 @@ that a question takes seconds.
 | `mjev models` | what the server serves |
 | `mjev serve` / `mjev stop` | start the server / stop it and release the cards |
 | `mjev reconstruct --file req.json` | what Jev most likely does with a request (offline): the document and each question's branch as the model reads it |
+| `mjev evidence` | Jev's published answers as a case file and rows, to measure a server against (`make closeness`) |
 
 ## Library
 
@@ -98,3 +99,9 @@ TypeSafe's own formulas (all sixteen published answers reproduced). The
 inferences are code in [`src/reconstruction.rs`](src/reconstruction.rs); the
 data is [`evidence/published_pairs.json`](evidence/published_pairs.json);
 the fits are [`tools/jevre`](tools/jevre/src/main.rs).
+
+Measured against Jev's own published answers (`make closeness`), Intel Phi
+Jev's local subject with lettered options, the docs' option order and three
+rotations averaged makes the same decision as Jev on all 28 published
+questions; the details, and why Jev's own input layout does worse on an
+untrained model, are in the report's last section.

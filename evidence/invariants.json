@@ -1,0 +1,38 @@
+[
+  {
+    "source": "https://docs.typesafe.ai/model-jaggedness/jev-1.13",
+    "note": "The same question asked as a Noul and as a yes/no Choice; the docs print noul 0.22, choice yes 0.01, no 0.99, confidence 0.97.",
+    "request": {
+      "state": "I'm not happy with the fit. What are my options here?",
+      "questions": {
+        "refund_noul": {"type": "noul", "instructions": "Is the customer asking for a refund?"},
+        "refund_choice": {"type": "choice", "instructions": "Is the customer asking for a refund?", "criteria": {"yes": null, "no": null}}
+      }
+    },
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "refund_noul": {"type": "noul", "noul": 0.22},
+        "refund_choice": {"type": "choice", "choice": "no", "confidence": 0.97, "probabilities": {"yes": 0.01, "no": 0.99}}
+      }
+    }
+  },
+  {
+    "source": "https://docs.typesafe.ai/model-jaggedness/jev-1.13",
+    "note": "A question and its negation as two Nouls; the docs print 0.72 and 0.47, summing to 1.19.",
+    "request": {
+      "state": "I was charged twice for the same order. Can someone look into this?",
+      "questions": {
+        "refund": {"type": "noul", "instructions": "Is the customer asking for a refund?"},
+        "not_refund": {"type": "noul", "instructions": "Is the customer asking for something other than a refund?"}
+      }
+    },
+    "response": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "refund": {"type": "noul", "noul": 0.72},
+        "not_refund": {"type": "noul", "noul": 0.47}
+      }
+    }
+  }
+]

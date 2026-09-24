@@ -3,7 +3,7 @@
 .DEFAULT_GOAL := help
 MJEV := target/release/mjev
 
-.PHONY: help build query eval models reconstruct evidence serve stop test fmt clippy docs-check tool-check check clean
+.PHONY: help build query eval models reconstruct evidence closeness serve stop test fmt clippy docs-check tool-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -22,6 +22,12 @@ models: build ## What the server serves
 
 reconstruct: build ## What Jev most likely does with examples/query.json (offline)
 	$(MJEV) reconstruct --file examples/query.json
+
+closeness: build ## Ask Intel Phi Jev Jev's published questions and compare with Jev (LAYOUT, PERMUTATIONS)
+	$(MJEV) evidence
+	XKS_LAYOUT=$(or $(LAYOUT),letters) XKS_PERMUTATIONS=$(or $(PERMUTATIONS),3) $(MJEV) eval target/evidence-cases.jsonl --rows target/closeness-rows.jsonl
+	$(MJEV) stop
+	$(MJEV) corroborate target/evidence-jev-rows.jsonl target/closeness-rows.jsonl --temperature
 
 evidence: ## The reverse-engineering fits (JEVRE_TOKENIZERS names tokenizer.json files)
 	cd tools/jevre && cargo run --release --offline -- input

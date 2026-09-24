@@ -22,6 +22,7 @@ pub mod confidence;
 pub mod config;
 pub mod corroborate;
 pub mod eval;
+pub mod evidence;
 pub mod phi;
 pub mod protocol;
 pub mod reconstruction;
