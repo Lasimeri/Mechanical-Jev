@@ -39,6 +39,7 @@ that a question takes seconds.
 | `mjev corroborate A B` | two recorded runs compared question by question |
 | `mjev models` | what the server serves |
 | `mjev serve` / `mjev stop` | start the server / stop it and release the cards |
+| `mjev reconstruct --file req.json` | what Jev most likely does with a request (offline): the document and each question's branch as the model reads it |
 
 ## Library
 
@@ -84,3 +85,16 @@ the confidence formulas are TypeSafe's own, from their MIT-licensed
 `system-one-adapter`, with its test cases. The protocol and evaluation
 code began in [jev-rs](https://github.com/yijunyu/jev-rs), by way of
 Intel Phi Jev. See [`NOTICE`](NOTICE). MIT or Apache-2.0.
+
+## Jev, reverse engineered
+
+[`docs/reverse-engineering.md`](docs/reverse-engineering.md) infers what
+TypeSafe's Jev does inside from its published documentation alone, without
+calling it: a fixed preamble of about 263 tokens, each question sent as its
+compact JSON without the id, the state prefilled once and every question a
+branch from it, a readout over the offered options (not counted from a
+small number of samples), a separate Noul readout, and confidence by
+TypeSafe's own formulas (all sixteen published answers reproduced). The
+inferences are code in [`src/reconstruction.rs`](src/reconstruction.rs); the
+data is [`evidence/published_pairs.json`](evidence/published_pairs.json);
+the fits are [`tools/jevre`](tools/jevre/src/main.rs).

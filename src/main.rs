@@ -8,7 +8,7 @@ use serde_json::{json, Map, Value};
 
 use mechanical_jev::client::Client;
 use mechanical_jev::protocol::Request;
-use mechanical_jev::{config, corroborate, eval, phi};
+use mechanical_jev::{config, corroborate, eval, phi, reconstruction};
 
 #[derive(Parser)]
 #[command(
@@ -61,6 +61,13 @@ enum Cmd {
     },
     /// The models the server serves.
     Models,
+    /// What Jev most likely does with a request, reconstructed from its
+    /// documentation (docs/reverse-engineering.md): the document and each
+    /// question's branch as the model reads it. Offline; asks nothing.
+    Reconstruct {
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
     /// Start Intel Phi Jev's server (the other commands start it when needed).
     Serve,
     /// Stop Intel Phi Jev's server and release the Phi cards.
@@ -86,6 +93,26 @@ fn read_rows(p: &PathBuf) -> Result<Vec<eval::Row>, String> {
 
 fn run() -> Result<(), String> {
     let cli = Cli::parse();
+    if let Cmd::Reconstruct { file } = &cli.cmd {
+        let req = build_request(file.clone(), None, Vec::new(), Vec::new(), Vec::new())?;
+        let plan = reconstruction::compile(&req)?;
+        let branches: Vec<Value> = plan
+            .branches
+            .iter()
+            .map(|b| json!({"id": b.id, "kind": format!("{:?}", b.kind), "reads": b.prompt, "outcomes": b.outcomes}))
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&json!({
+                "preamble_tokens": reconstruction::PREAMBLE_TOKENS,
+                "document": plan.document,
+                "branches": branches,
+                "limits": {"state_plus_longest_question": reconstruction::BRANCH_LIMIT, "request": reconstruction::REQUEST_LIMIT},
+            }))
+            .unwrap()
+        );
+        return Ok(());
+    }
     if let Cmd::Corroborate { a, b, pairs } = &cli.cmd {
         let mut r = corroborate::compare(&read_rows(a)?, &read_rows(b)?);
         if !pairs {
@@ -147,7 +174,7 @@ fn run() -> Result<(), String> {
             println!("{}", serde_json::to_string_pretty(&m).unwrap());
             Ok(())
         }
-        Cmd::Corroborate { .. } | Cmd::Serve | Cmd::Stop => Ok(()),
+        Cmd::Corroborate { .. } | Cmd::Reconstruct { .. } | Cmd::Serve | Cmd::Stop => Ok(()),
     }
 }
 

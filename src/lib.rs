@@ -13,6 +13,8 @@
 //! - [`confidence`]: TypeSafe's confidence formulas.
 //! - [`eval`]: labelled case files, scored by Jev, measured.
 //! - [`corroborate`]: two recorded runs compared question by question.
+//! - [`reconstruction`]: Jev's request pipeline, inferred from its
+//!   documentation alone (docs/reverse-engineering.md).
 //! - [`config`]: the API key and defaults from files.
 
 pub mod client;
@@ -22,3 +24,4 @@ pub mod corroborate;
 pub mod eval;
 pub mod phi;
 pub mod protocol;
+pub mod reconstruction;

@@ -3,7 +3,7 @@
 .DEFAULT_GOAL := help
 MJEV := target/release/mjev
 
-.PHONY: help build query eval models serve stop test fmt clippy docs-check check clean
+.PHONY: help build query eval models reconstruct evidence serve stop test fmt clippy docs-check tool-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -19,6 +19,14 @@ eval: build ## Score the long real sessions; rows in target/eval-rows.jsonl
 
 models: build ## What the server serves
 	$(MJEV) models
+
+reconstruct: build ## What Jev most likely does with examples/query.json (offline)
+	$(MJEV) reconstruct --file examples/query.json
+
+evidence: ## The reverse-engineering fits (JEVRE_TOKENIZERS names tokenizer.json files)
+	cd tools/jevre && cargo run --release --offline -- input
+	cd tools/jevre && cargo run --release --offline -- output
+	cd tools/jevre && cargo run --release --offline -- probs
 
 serve: build ## Start Intel Phi Jev's server
 	$(MJEV) serve
@@ -38,7 +46,10 @@ clippy: ## Lint
 docs-check: ## Sibling .md files, the no-dash rule, relative links
 	scripts/check-docs.sh
 
-check: docs-check fmt clippy build test ## Everything before a commit
+tool-check: ## Format and lint tools/jevre (offline)
+	cd tools/jevre && cargo fmt --check && cargo clippy --release --offline -- -D warnings
+
+check: docs-check fmt clippy build test tool-check ## Everything before a commit
 
 clean: ## Remove build outputs
 	cargo clean

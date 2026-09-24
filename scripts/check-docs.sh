@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 fail=0
 
 # Rule 1: sibling docs. Code file extensions and the directories that hold code.
-code_dirs=(src scripts)
+code_dirs=(src scripts tools)
 while IFS= read -r f; do
     stem="${f%.*}"
     if [ ! -f "$stem.md" ]; then
@@ -18,7 +18,7 @@ while IFS= read -r f; do
     fi
 done < <(find "${code_dirs[@]}" -type f \
     \( -name '*.rs' -o -name '*.c' -o -name '*.h' -o -name '*.S' -o -name '*.sh' -o -name '*.json' -o -name '*.config' \) \
-    -not -path '*/target/*' -not -path '*/build/*' -not -path '*/vendor/*' 2>/dev/null)
+    -not -path '*/target/*' -not -path '*/tokenizers/*' -not -path '*/build/*' -not -path '*/vendor/*' 2>/dev/null)
 
 # Rule 2: no em/en dashes. Search everything git tracks or would track.
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then

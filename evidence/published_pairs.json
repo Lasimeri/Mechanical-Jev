@@ -1,0 +1,735 @@
+[
+  {
+    "request": {
+      "questions": {
+        "is_urgent": {
+          "instructions": "Does this convey urgency?",
+          "type": "noul"
+        }
+      },
+      "state": "Help! My payouts have been failing for 3 days."
+    },
+    "response": {
+      "answers": {
+        "is_urgent": {
+          "noul": 0.95,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 296,
+        "output_tokens": 20
+      }
+    },
+    "source": "https://docs.typesafe.ai/api"
+  },
+  {
+    "request": {
+      "questions": {
+        "is_urgent": {
+          "criteria": {
+            "false": "No urgency expressed",
+            "true": "Explicitly time-sensitive"
+          },
+          "instructions": "Does this convey urgency?",
+          "type": "noul"
+        }
+      },
+      "state": "Help! My payouts have been failing for 3 days."
+    },
+    "response": {
+      "answers": {
+        "is_urgent": {
+          "noul": 0.95,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 307,
+        "output_tokens": 20
+      }
+    },
+    "source": "https://docs.typesafe.ai/api"
+  },
+  {
+    "request": {
+      "questions": {
+        "department": {
+          "criteria": {
+            "billing": "Payments, invoicing, refunds",
+            "sales": "Pricing, upgrades, new accounts",
+            "technical": "Bugs, outages, integrations"
+          },
+          "instructions": "Which team should handle this?",
+          "type": "choice"
+        }
+      },
+      "state": "Help! My payouts have been failing for 3 days."
+    },
+    "response": {
+      "answers": {
+        "department": {
+          "choice": "billing",
+          "confidence": 0.81,
+          "probabilities": {
+            "billing": 0.88,
+            "sales": 0.0,
+            "technical": 0.12
+          },
+          "type": "choice"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 318,
+        "output_tokens": 34
+      }
+    },
+    "source": "https://docs.typesafe.ai/api"
+  },
+  {
+    "request": {
+      "questions": {
+        "frustration": {
+          "criteria": [
+            "Calm",
+            "Frustrated",
+            "Very angry"
+          ],
+          "instructions": "How frustrated is the customer?",
+          "type": "score"
+        }
+      },
+      "state": "Help! My payouts have been failing for 3 days."
+    },
+    "response": {
+      "answers": {
+        "frustration": {
+          "confidence": 0.92,
+          "legend": {
+            "0": "Calm",
+            "1": "Frustrated",
+            "2": "Very angry"
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.95,
+            "2": 0.05
+          },
+          "score": 1.05,
+          "type": "score"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 304,
+        "output_tokens": 18
+      }
+    },
+    "source": "https://docs.typesafe.ai/api"
+  },
+  {
+    "request": {
+      "questions": {
+        "department": {
+          "criteria": {
+            "billing": "Payment or subscription issues",
+            "sales": "Pricing or account questions",
+            "technical": "Bugs or integration problems"
+          },
+          "instructions": "Which team should handle this",
+          "type": "choice"
+        },
+        "frustration": {
+          "criteria": [
+            "Calm, just stating facts",
+            "Frustrated but civil",
+            "Very angry, strong language"
+          ],
+          "instructions": "How frustrated the customer appears",
+          "type": "score"
+        },
+        "is_urgent": {
+          "instructions": "The message conveys urgency or time-sensitivity",
+          "type": "noul"
+        }
+      },
+      "state": "Hi, I've been trying to connect my Stripe account for 3 days and the integration keeps failing. I'm losing sales. Please help ASAP."
+    },
+    "response": {
+      "answers": {
+        "department": {
+          "choice": "technical",
+          "confidence": 0.78,
+          "probabilities": {
+            "billing": 0.15,
+            "sales": 0.0,
+            "technical": 0.85
+          },
+          "type": "choice"
+        },
+        "frustration": {
+          "confidence": 1.0,
+          "legend": {
+            "0": "Calm, just stating facts",
+            "1": "Frustrated but civil",
+            "2": "Very angry, strong language"
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 1.0,
+            "2": 0.0
+          },
+          "score": 1.0,
+          "type": "score"
+        },
+        "is_urgent": {
+          "noul": 1.0,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 392,
+        "output_tokens": 65
+      }
+    },
+    "source": "https://docs.typesafe.ai/introduction/quickstart"
+  },
+  {
+    "request": {
+      "questions": {
+        "department": {
+          "criteria": {
+            "billing": "Charges, invoices, payment problems",
+            "returns": "Exchanges, wrong or damaged items",
+            "shipping": "Delivery status, delays, lost packages"
+          },
+          "instructions": "Which team should handle this?",
+          "type": "choice"
+        }
+      },
+      "state": "My running shoes arrived in the wrong size. Can I swap them for a size 10?"
+    },
+    "response": {
+      "answers": {
+        "department": {
+          "choice": "returns",
+          "confidence": 1.0,
+          "probabilities": {
+            "billing": 0.0,
+            "returns": 1.0,
+            "shipping": 0.0
+          },
+          "type": "choice"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 328,
+        "output_tokens": 34
+      }
+    },
+    "source": "https://docs.typesafe.ai/primitives/choice"
+  },
+  {
+    "request": {
+      "questions": {
+        "department": {
+          "criteria": {
+            "billing": "Charges, invoices, payment problems",
+            "returns": "Exchanges, wrong or damaged items",
+            "shipping": "Delivery status, delays, lost packages"
+          },
+          "instructions": "Which team should handle this?",
+          "type": "choice"
+        },
+        "requested_resolution": {
+          "criteria": {
+            "exchange": "Swap the item for a different one",
+            "information": "Just an answer, no action needed",
+            "refund": "Money back",
+            "replacement": "The same item sent again"
+          },
+          "instructions": "What does the customer want to happen?",
+          "type": "choice"
+        },
+        "return_reason": {
+          "criteria": {
+            "changed_mind": "The item is fine, the customer no longer wants it",
+            "damaged": "The item arrived broken or faulty",
+            "other": "A return reason that fits none of the above",
+            "wrong_item": "A different product was delivered",
+            "wrong_size": "The item doesn't fit"
+          },
+          "instructions": "If the customer wants to return something, why?",
+          "type": "choice"
+        },
+        "shipping_issue": {
+          "criteria": {
+            "damaged_in_transit": "The package arrived damaged",
+            "delayed": "The package is late but still on its way",
+            "not_delivered": "The package never arrived",
+            "other": "A shipping problem that fits none of the above",
+            "wrong_address": "The package went to the wrong place"
+          },
+          "instructions": "If this is a shipping problem, which kind is it?",
+          "type": "choice"
+        },
+        "tone": {
+          "criteria": {
+            "angry": null,
+            "calm": null,
+            "frustrated": null
+          },
+          "instructions": "What is the customer's tone?",
+          "type": "choice"
+        }
+      },
+      "state": "Shoes arrived two weeks late and in the wrong size. Also I see two charges of $120 on my card. What are you going to do about this?"
+    },
+    "response": {
+      "answers": {
+        "department": {
+          "choice": "returns",
+          "confidence": 0.42,
+          "probabilities": {
+            "billing": 0.35,
+            "returns": 0.61,
+            "shipping": 0.04
+          },
+          "type": "choice"
+        },
+        "requested_resolution": {
+          "choice": "refund",
+          "confidence": 0.2,
+          "probabilities": {
+            "exchange": 0.24,
+            "information": 0.02,
+            "refund": 0.4,
+            "replacement": 0.34
+          },
+          "type": "choice"
+        },
+        "return_reason": {
+          "choice": "wrong_size",
+          "confidence": 1.0,
+          "probabilities": {
+            "changed_mind": 0.0,
+            "damaged": 0.0,
+            "other": 0.0,
+            "wrong_item": 0.0,
+            "wrong_size": 1.0
+          },
+          "type": "choice"
+        },
+        "shipping_issue": {
+          "choice": "delayed",
+          "confidence": 0.67,
+          "probabilities": {
+            "damaged_in_transit": 0.0,
+            "delayed": 0.74,
+            "not_delivered": 0.0,
+            "other": 0.26,
+            "wrong_address": 0.0
+          },
+          "type": "choice"
+        },
+        "tone": {
+          "choice": "frustrated",
+          "confidence": 0.76,
+          "probabilities": {
+            "angry": 0.16,
+            "calm": 0.0,
+            "frustrated": 0.84
+          },
+          "type": "choice"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 589,
+        "output_tokens": 212
+      }
+    },
+    "source": "https://docs.typesafe.ai/primitives/choice"
+  },
+  {
+    "request": {
+      "questions": {
+        "return_topic": {
+          "criteria": {
+            "return_policy": {
+              "examples": [
+                "Can I return shoes I've worn once?",
+                "How long do I have to return an order?"
+              ],
+              "not_for": "Progress of a return already sent",
+              "what": "Whether and how an item can be returned"
+            },
+            "return_status": {
+              "examples": [
+                "Has my return arrived yet?",
+                "When will my refund be paid?"
+              ],
+              "not_for": "Whether and how an item can be returned",
+              "what": "Progress of a return already sent"
+            }
+          },
+          "instructions": {
+            "focus": "Classify the information the customer wants.",
+            "question": "Which returns topic is the customer asking about?"
+          },
+          "type": "choice"
+        }
+      },
+      "state": "I sent the shoes back a week ago. When do I get my money?"
+    },
+    "response": {
+      "answers": {
+        "return_topic": {
+          "choice": "return_status",
+          "confidence": 1.0,
+          "probabilities": {
+            "return_policy": 0.0,
+            "return_status": 1.0
+          },
+          "type": "choice"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 407,
+        "output_tokens": 32
+      }
+    },
+    "source": "https://docs.typesafe.ai/primitives/choice"
+  },
+  {
+    "request": {
+      "questions": {
+        "is_human_escalation": {
+          "instructions": "Is the customer asking for a human agent?",
+          "type": "noul"
+        },
+        "is_repeat_contact": {
+          "criteria": {
+            "false": "No sign of any previous contact",
+            "true": "Mentions a prior attempt, ticket, or that they have asked before"
+          },
+          "instructions": "Has the customer contacted support about this before?",
+          "type": "noul"
+        }
+      },
+      "state": "I have asked three times now. Can I please just talk to a real person?"
+    },
+    "response": {
+      "answers": {
+        "is_human_escalation": {
+          "noul": 0.99,
+          "type": "noul"
+        },
+        "is_repeat_contact": {
+          "noul": 0.93,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 360,
+        "output_tokens": 39
+      }
+    },
+    "source": "https://docs.typesafe.ai/primitives/noul"
+  },
+  {
+    "request": {
+      "questions": {
+        "same_as_record_18": {
+          "instructions": {
+            "potential_duplicate": {
+              "last_employer": "Google",
+              "location": "Oakland, CA",
+              "name": "Jon Smith"
+            },
+            "question": "Is the resume for the same person as `potential_duplicate`?"
+          },
+          "type": "noul"
+        },
+        "same_as_record_42": {
+          "instructions": {
+            "potential_duplicate": {
+              "last_employer": "Lone Star Freight",
+              "location": "Austin, TX",
+              "name": "John Smith"
+            },
+            "question": "Is the resume for the same person as `potential_duplicate`?"
+          },
+          "type": "noul"
+        },
+        "same_as_record_77": {
+          "instructions": {
+            "potential_duplicate": {
+              "last_employer": "Bay Health Clinic",
+              "location": "Oakland, CA",
+              "name": "John Smithers"
+            },
+            "question": "Is the resume for the same person as `potential_duplicate`?"
+          },
+          "type": "noul"
+        }
+      },
+      "state": {
+        "resume": {
+          "experience": [
+            {
+              "employer": "Google",
+              "title": "Senior Backend Engineer",
+              "years": "2021-2025"
+            },
+            {
+              "employer": "Microsoft",
+              "title": "Software Engineer",
+              "years": "2017-2021"
+            }
+          ],
+          "location": "Oakland, CA",
+          "name": "John Smith",
+          "summary": "Backend engineer with eight years of Python and Go experience."
+        }
+      }
+    },
+    "response": {
+      "answers": {
+        "same_as_record_18": {
+          "noul": 0.74,
+          "type": "noul"
+        },
+        "same_as_record_42": {
+          "noul": 0.09,
+          "type": "noul"
+        },
+        "same_as_record_77": {
+          "noul": 0.08,
+          "type": "noul"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 535,
+        "output_tokens": 58
+      }
+    },
+    "source": "https://docs.typesafe.ai/primitives/noul"
+  },
+  {
+    "request": {
+      "questions": {
+        "bug_severity": {
+          "criteria": [
+            "Cosmetic; no impact to functionality",
+            "Broken or degraded feature, but workaround exists",
+            "Blocking issue; no workaround exists"
+          ],
+          "instructions": "How severe is the reported issue?",
+          "type": "score"
+        }
+      },
+      "state": "The export button crashes the settings page in Safari. It works in Chrome, but a few of our customers only use Safari."
+    },
+    "response": {
+      "answers": {
+        "bug_severity": {
+          "confidence": 0.35,
+          "legend": {
+            "0": "Cosmetic; no impact to functionality",
+            "1": "Broken or degraded feature, but workaround exists",
+            "2": "Blocking issue; no workaround exists"
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.57,
+            "2": 0.43
+          },
+          "score": 1.43,
+          "type": "score"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 332,
+        "output_tokens": 18
+      }
+    },
+    "source": "https://docs.typesafe.ai/primitives/score"
+  },
+  {
+    "request": {
+      "questions": {
+        "frustration": {
+          "criteria": [
+            "Calm, just stating facts",
+            "Frustrated but civil",
+            "Very angry, strong language or threatening to leave"
+          ],
+          "instructions": "How frustrated is the customer?",
+          "type": "score"
+        },
+        "report_quality": {
+          "criteria": [
+            "No detail; just says something is broken",
+            "Names the feature but no steps or environment",
+            "Steps to reproduce or environment, but not both",
+            "Steps to reproduce and environment"
+          ],
+          "instructions": "How much does the report give an engineer to work with?",
+          "type": "score"
+        },
+        "severity": {
+          "criteria": [
+            "Cosmetic; no impact to functionality",
+            "Broken or degraded feature, but workaround exists",
+            "Blocking issue; no workaround exists"
+          ],
+          "instructions": "How severe is the reported issue?",
+          "type": "score"
+        }
+      },
+      "state": "Export to PDF fails with a spinner that never finishes. Some of our team say CSV export still works for them, others say it fails too. This is the third time I'm writing in and honestly I'm done. Steps: open any report, click Export, choose PDF. Chrome 128 on macOS."
+    },
+    "response": {
+      "answers": {
+        "frustration": {
+          "confidence": 0.58,
+          "legend": {
+            "0": "Calm, just stating facts",
+            "1": "Frustrated but civil",
+            "2": "Very angry, strong language or threatening to leave"
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.72,
+            "2": 0.28
+          },
+          "score": 1.28,
+          "type": "score"
+        },
+        "report_quality": {
+          "confidence": 1.0,
+          "legend": {
+            "0": "No detail; just says something is broken",
+            "1": "Names the feature but no steps or environment",
+            "2": "Steps to reproduce or environment, but not both",
+            "3": "Steps to reproduce and environment"
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.0,
+            "2": 0.0,
+            "3": 1.0
+          },
+          "score": 3.0,
+          "type": "score"
+        },
+        "severity": {
+          "confidence": 0.64,
+          "legend": {
+            "0": "Cosmetic; no impact to functionality",
+            "1": "Broken or degraded feature, but workaround exists",
+            "2": "Blocking issue; no workaround exists"
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.76,
+            "2": 0.24
+          },
+          "score": 1.24,
+          "type": "score"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 468,
+        "output_tokens": 43
+      }
+    },
+    "source": "https://docs.typesafe.ai/primitives/score"
+  },
+  {
+    "request": {
+      "questions": {
+        "bug_severity": {
+          "criteria": [
+            {
+              "examples": [
+                "typo in a label",
+                "misaligned icon"
+              ],
+              "what": "Cosmetic; no impact to functionality"
+            },
+            {
+              "examples": [
+                "export fails in one browser but works in another"
+              ],
+              "what": "Broken or degraded feature, but workaround exists"
+            },
+            {
+              "examples": [
+                "cannot log in",
+                "data loss"
+              ],
+              "what": "Blocking issue; no workaround exists"
+            }
+          ],
+          "instructions": "How severe is the reported issue?",
+          "type": "score"
+        }
+      },
+      "state": "Export to PDF fails with a spinner that never finishes. Some of our team say CSV export still works for them, others say it fails too."
+    },
+    "response": {
+      "answers": {
+        "bug_severity": {
+          "confidence": 0.87,
+          "legend": {
+            "0": {
+              "examples": [
+                "typo in a label",
+                "misaligned icon"
+              ],
+              "what": "Cosmetic; no impact to functionality"
+            },
+            "1": {
+              "examples": [
+                "export fails in one browser but works in another"
+              ],
+              "what": "Broken or degraded feature, but workaround exists"
+            },
+            "2": {
+              "examples": [
+                "cannot log in",
+                "data loss"
+              ],
+              "what": "Blocking issue; no workaround exists"
+            }
+          },
+          "probabilities": {
+            "0": 0.0,
+            "1": 0.91,
+            "2": 0.09
+          },
+          "score": 1.09,
+          "type": "score"
+        }
+      },
+      "model": "jev-1.13.0",
+      "usage": {
+        "input_tokens": 379,
+        "output_tokens": 18
+      }
+    },
+    "source": "https://docs.typesafe.ai/primitives/score"
+  }
+]
