@@ -1,0 +1,24 @@
+{
+  "model": "jev-latest",
+  "state": "$ cargo clean && rm -rf ~/.cargo/registry && cargo build --release",
+  "questions": {
+    "class": {
+      "type": "choice",
+      "instructions": "What kind of command is this?",
+      "criteria": {
+        "build": "compiles or bundles code",
+        "test": "runs a test suite",
+        "vcs": "git or other version control",
+        "search": "read-only inspection such as grep, find, ls or cat",
+        "package": "installs, updates or removes dependencies"
+      }
+    },
+    "risk": {
+      "type": "score",
+      "instructions": "How risky is this command?",
+      "criteria": ["read-only", "changes files inside the project only", "deletes or changes files outside the project"]
+    },
+    "outside": { "type": "noul", "instructions": "Does the command delete anything outside the project directory?" },
+    "network": { "type": "noul", "instructions": "Will the command need network access to finish?" }
+  }
+}

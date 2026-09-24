@@ -1,0 +1,16 @@
+Mechanical Jev
+Copyright 2026 Lasimeri
+
+Parts of src/protocol.rs and src/eval.rs began in jev-rs by Yijun Yu and
+contributors (https://github.com/yijunyu/jev-rs, commit
+d8db037c510c8fdb2649bab81152a837eda3c764), used under the MIT license or
+the Apache License 2.0. The examples dev_tasks.jsonl is jev-rs's; the other
+examples are this project's, built from real text in
+https://github.com/Lasimeri/Intel-Phi-AVX512.
+
+The confidence formulas in src/confidence.rs and their test cases follow
+TypeSafe AI's system-one-adapter (MIT License, Copyright (c) 2026 TypeSafe
+AI).
+
+This work is offered under the MIT license or the Apache License 2.0, at
+your option (LICENSE-MIT, LICENSE-APACHE).

@@ -1,0 +1,28 @@
+[package]
+name = "mechanical-jev"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT OR Apache-2.0"
+description = "Mechanical Jev: a Rust client, command line and evaluation harness for TypeSafe's Jev, the System One model (noul / choice / score)"
+readme = "README.md"
+repository = "https://github.com/Lasimeri/Mechanical-Jev"
+
+[lib]
+name = "mechanical_jev"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mjev"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+ureq = { version = "2", features = ["json"] }
+clap = { version = "4", features = ["derive", "env"] }
+thiserror = "1"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
