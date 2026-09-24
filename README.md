@@ -92,9 +92,11 @@ drive those SDKs against the same server.
 | [Intel-Phi-Jev](https://github.com/Lasimeri/Intel-Phi-Jev) | `xks`, the server: a local Jev on this host and the cards | `MJEV_XKS`, else `xks` on PATH, else `target/release/xks` in a checkout next to this one, else in `$HOME` |
 | Mechanical-Jev (this one) | `mjev`, the asking side, and Jev reverse engineered | |
 
-Clone them side by side and nothing needs configuring: each finds the
-next under its clone's name (`Intel-Phi-Jev`) or the spaced one
-(`Intel Phi Jev`) ([`src/phi.md`](src/phi.md)).
+Cloned side by side, the repositories find each other without
+configuration, under each one's clone name (`Intel-Phi-Jev`) or the
+spaced one (`Intel Phi Jev`) ([`src/phi.md`](src/phi.md)). What does need
+setting is Intel Phi Jev's: the model and llama.cpp paths in its
+`xks.conf`, and for the cards, the stack's `phi` command with a card up.
 [`CONTRIBUTING.md`](CONTRIBUTING.md) has the rules they share.
 
 ## Sources

@@ -19,8 +19,8 @@ const XKS_IN_CHECKOUT: &str = "target/release/xks";
 
 /// Intel Phi Jev's `xks`: `MJEV_XKS`, else `xks` on PATH, else the build
 /// in a checkout next to this one under either name, else in `$HOME`.
-/// When none is built, the spaced name next to this checkout (so an error
-/// names a path).
+/// When none is built, where it would be in the first checkout found (so
+/// the error names the directory to build in), else next to this one.
 pub fn xks() -> PathBuf {
     if let Some(p) = std::env::var_os("MJEV_XKS") {
         return PathBuf::from(p);
@@ -33,9 +33,16 @@ pub fn xks() -> PathBuf {
     if let Some(home) = std::env::var_os("HOME") {
         bases.push(PathBuf::from(home));
     }
-    find_sibling(&bases, &SIBLING_NAMES, XKS_IN_CHECKOUT)
-        .map(|d| d.join(XKS_IN_CHECKOUT))
-        .unwrap_or_else(|| here.with_file_name(SIBLING_NAMES[1]).join(XKS_IN_CHECKOUT))
+    checkout(&bases)
+        .unwrap_or_else(|| here.with_file_name(SIBLING_NAMES[1]))
+        .join(XKS_IN_CHECKOUT)
+}
+
+/// The Intel Phi Jev checkout to use: the first with `xks` built, else the
+/// first at all (it has `Cargo.toml`), bases in order, names in order.
+pub fn checkout(bases: &[PathBuf]) -> Option<PathBuf> {
+    find_sibling(bases, &SIBLING_NAMES, XKS_IN_CHECKOUT)
+        .or_else(|| find_sibling(bases, &SIBLING_NAMES, "Cargo.toml"))
 }
 
 /// The first `base/name` holding `probe`, bases in order, names in order.
@@ -143,27 +150,32 @@ mod tests {
     }
 
     #[test]
-    fn xks_is_found_under_either_name_nearest_base_first() {
-        use super::{find_sibling, SIBLING_NAMES, XKS_IN_CHECKOUT};
+    fn xks_is_found_under_either_name_built_first_then_nearest() {
+        use super::{checkout, SIBLING_NAMES, XKS_IN_CHECKOUT};
         let tmp = std::env::temp_dir().join(format!("mjev-sibling-{}", std::process::id()));
         let (near, home) = (tmp.join("near"), tmp.join("home"));
-        let plant = |base: &std::path::Path, name: &str| {
+        let clone = |base: &std::path::Path, name: &str| {
+            std::fs::create_dir_all(base.join(name)).unwrap();
+            std::fs::write(base.join(name).join("Cargo.toml"), "").unwrap();
+        };
+        let build = |base: &std::path::Path, name: &str| {
             let bin = base.join(name).join(XKS_IN_CHECKOUT);
             std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
             std::fs::write(bin, "").unwrap();
         };
         let bases = [near.clone(), home.clone()];
-        assert_eq!(find_sibling(&bases, &SIBLING_NAMES, XKS_IN_CHECKOUT), None);
-        plant(&home, SIBLING_NAMES[1]);
-        assert_eq!(
-            find_sibling(&bases, &SIBLING_NAMES, XKS_IN_CHECKOUT),
-            Some(home.join(SIBLING_NAMES[1]))
-        );
-        plant(&near, SIBLING_NAMES[0]);
-        assert_eq!(
-            find_sibling(&bases, &SIBLING_NAMES, XKS_IN_CHECKOUT),
-            Some(near.join(SIBLING_NAMES[0]))
-        );
+        assert_eq!(checkout(&bases), None);
+        // A fresh, unbuilt clone: the error must name it, not a path that
+        // does not exist.
+        clone(&near, SIBLING_NAMES[0]);
+        assert_eq!(checkout(&bases), Some(near.join(SIBLING_NAMES[0])));
+        // A built checkout wins over an unbuilt nearer one.
+        clone(&home, SIBLING_NAMES[1]);
+        build(&home, SIBLING_NAMES[1]);
+        assert_eq!(checkout(&bases), Some(home.join(SIBLING_NAMES[1])));
+        // Both built: the nearer one.
+        build(&near, SIBLING_NAMES[0]);
+        assert_eq!(checkout(&bases), Some(near.join(SIBLING_NAMES[0])));
         std::fs::remove_dir_all(&tmp).unwrap();
     }
 }

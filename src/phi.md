@@ -24,6 +24,10 @@ In order, the first that exists:
    `Intel-Phi-Jev` (a `git clone`) or `Intel Phi Jev`.
 4. The same two names in `$HOME`.
 
+When no checkout has `xks` built, the first checkout found (it has
+`Cargo.toml`) is the one the "not built" error names, so a fresh clone is
+told where to run `make build-x86`.
+
 The same order finds every sibling in this family of repositories
 (Intel Phi Jev finds Intel-Phi-AVX512, which finds Intel-Phi-3120A).
 `find_sibling` is the search, tested against a temporary tree holding
