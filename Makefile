@@ -6,7 +6,7 @@ MJEV := target/release/mjev
 .PHONY: help build query eval models reconstruct evidence closeness serve stop test fmt clippy docs-check tool-check check clean
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
 
 build: ## Build mjev
 	cargo build --release

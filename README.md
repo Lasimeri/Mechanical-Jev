@@ -19,16 +19,20 @@ asks.
 ## Start
 
 ```sh
-cargo build --release
+make build          # mjev
 make query          # starts Intel Phi Jev if it is down, asks examples/query.json
 ./target/release/mjev query --state '$ git status' --noul 'ro=Is this command read-only?'
 make eval           # the long real sessions, scored
+make closeness      # Jev's published questions asked locally, compared with Jev's answers
 make stop           # stop the server, release the cards
+make check          # docs, format, lint, build, tests
 ```
 
-The first request starts the server (`xks serve --detach` from Intel Phi
-Jev, which loads the model and puts the cards to work: about 45 s); after
-that a question takes seconds.
+The server is [Intel Phi Jev](https://github.com/Lasimeri/Intel-Phi-Jev),
+cloned and built (`make build`) next to this checkout; see
+[The repositories](#the-repositories). The first request starts it
+(`xks serve --detach`, which loads the model and puts the cards to work:
+about 45 s); after that a question takes seconds.
 
 ## Commands
 
@@ -71,13 +75,27 @@ all of them.
 | key | default | meaning |
 | --- | --- | --- |
 | `TYPESAFE_BASE_URL` | `http://127.0.0.1:8090` | the server |
-| `MJEV_XKS` | `~/Intel Phi Jev/target/release/xks` | Intel Phi Jev's binary |
+| `MJEV_XKS` | found (below) | Intel Phi Jev's binary, when it is somewhere else |
 | `MJEV_AUTOSTART` | `1` | start the local server when it is down |
 | `TYPESAFE_DEFAULT_MODEL` | `jev-latest` | the model named in requests |
 | `TYPESAFE_API_KEY` | none | a bearer token, for a server that wants one |
 
 The variable names are the official TypeSafe SDKs', so the same settings
 drive those SDKs against the same server.
+
+## The repositories
+
+| repository | what | how it is found |
+| --- | --- | --- |
+| [Intel-Phi-3120A](https://github.com/Lasimeri/Intel-Phi-3120A) | the cards' software stack: boots them, serves their memory, the `phi` command | by Intel-Phi-AVX512 |
+| [Intel-Phi-AVX512](https://github.com/Lasimeri/Intel-Phi-AVX512) | the cards as an AVX-512 co-processor, whose ggml backend runs the model's multiplies | by Intel-Phi-Jev |
+| [Intel-Phi-Jev](https://github.com/Lasimeri/Intel-Phi-Jev) | `xks`, the server: a local Jev on this host and the cards | `MJEV_XKS`, else `xks` on PATH, else `target/release/xks` in a checkout next to this one, else in `$HOME` |
+| Mechanical-Jev (this one) | `mjev`, the asking side, and Jev reverse engineered | |
+
+Clone them side by side and nothing needs configuring: each finds the
+next under its clone's name (`Intel-Phi-Jev`) or the spaced one
+(`Intel Phi Jev`) ([`src/phi.md`](src/phi.md)).
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the rules they share.
 
 ## Sources
 

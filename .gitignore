@@ -1,4 +1,12 @@
+# Build outputs
 /target/
-/mjev.local.conf
 **/*.rs.bk
+
+# This machine's own settings (and any key): never tracked
+/mjev.local.conf
+
+# Editors and OS
+.vscode/
+.idea/
 *.swp
+.DS_Store
