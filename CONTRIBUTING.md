@@ -9,7 +9,8 @@ sections are the same in every repository of the family (see
 
 - **Rust** for everything, `tools/jevre` included.
 - **Shell and make** only for `scripts/check-docs.sh` and the `Makefile`,
-  which check the tree or call into `mjev`.
+  which check the tree, call into `mjev` and `jevre`, or fetch the pinned
+  tokenizers (`make tokenizers`).
 - **Never Python or JavaScript** for anything here.
 - The asking side only: nothing here runs a model; Intel-Phi-Jev does.
 
@@ -27,7 +28,9 @@ sections are the same in every repository of the family (see
 
 - The reverse engineering uses TypeSafe's published documentation only
   (`evidence/`, each item with its source page): Jev is never called, and
-  no other API either. The fits run offline (`make evidence`).
+  no other API either. The fits run offline (`make evidence`) over nine
+  public tokenizers pinned in `tools/jevre/TOKENIZERS` (`make tokenizers`
+  fetches them once, checked by sha256).
 - A closeness number cites the command that produced it (`make closeness`,
   with its `LAYOUT` and `PERMUTATIONS`).
 - Test data is TypeSafe's own documented examples, real text, or obviously

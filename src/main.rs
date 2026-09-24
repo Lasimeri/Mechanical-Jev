@@ -33,10 +33,12 @@ enum Cmd {
         /// id=instructions
         #[arg(long)]
         noul: Vec<String>,
-        /// id=instructions|key1:desc,key2:desc
+        /// id=instructions|key1:desc,key2:desc (`;` between options when a
+        /// description has commas; the last `|` starts the options)
         #[arg(long)]
         choice: Vec<String>,
-        /// id=instructions|level0,level1,level2
+        /// id=instructions|level0,level1,level2 (`;` between levels when one
+        /// has commas)
         #[arg(long)]
         score: Vec<String>,
     },
@@ -164,13 +166,7 @@ fn run() -> Result<(), String> {
     }
     let client = Client::from_env();
     match cli.cmd {
-        Cmd::Serve => {
-            if client.healthy() {
-                eprintln!("mjev: {} already answers", client.base);
-                return Ok(());
-            }
-            return phi::ensure(&client);
-        }
+        Cmd::Serve => return phi::serve(&client),
         Cmd::Stop => return phi::stop(),
         _ => phi::ensure(&client)?,
     }
@@ -248,15 +244,18 @@ fn build_request(
     }
     for s in choice {
         let (id, rest) = split_once(&s, '=')?;
-        let (instr, opts) = split_once(rest, '|')?;
+        let (instr, opts) = split_last(rest, '|')?;
         let mut criteria = Map::new();
-        for o in opts.split(',') {
+        for o in items(opts, &s)? {
             let (k, d) = o.split_once(':').unwrap_or((o, ""));
-            let d = d.trim();
-            criteria.insert(
-                k.trim().into(),
-                if d.is_empty() { Value::Null } else { json!(d) },
-            );
+            let (k, d) = (k.trim(), d.trim());
+            if k.is_empty() {
+                return Err(format!("an option without a key in `{s}`"));
+            }
+            if criteria.contains_key(k) {
+                return Err(format!("option `{k}` twice in `{s}`"));
+            }
+            criteria.insert(k.into(), if d.is_empty() { Value::Null } else { json!(d) });
         }
         questions.insert(
             id.into(),
@@ -265,8 +264,8 @@ fn build_request(
     }
     for s in score {
         let (id, rest) = split_once(&s, '=')?;
-        let (instr, levels) = split_once(rest, '|')?;
-        let levels: Vec<&str> = levels.split(',').map(str::trim).collect();
+        let (instr, levels) = split_last(rest, '|')?;
+        let levels = items(levels, &s)?;
         questions.insert(
             id.into(),
             json!({"type": "score", "instructions": instr, "criteria": levels}),
@@ -283,4 +282,41 @@ fn split_once(s: &str, c: char) -> Result<(&str, &str), String> {
     s.split_once(c)
         .map(|(a, b)| (a.trim(), b.trim()))
         .ok_or_else(|| format!("expected `{c}` in `{s}`"))
+}
+
+/// Split at the last `c`: the instructions before it may contain `c`.
+fn split_last(s: &str, c: char) -> Result<(&str, &str), String> {
+    s.rsplit_once(c)
+        .map(|(a, b)| (a.trim(), b.trim()))
+        .ok_or_else(|| format!("expected `{c}` in `{s}`"))
+}
+
+/// A list of options or levels: `;`-separated when there is a `;` (so a
+/// description may contain commas), else `,`-separated. Every item
+/// non-empty.
+fn items<'a>(list: &'a str, whole: &str) -> Result<Vec<&'a str>, String> {
+    let sep = if list.contains(';') { ';' } else { ',' };
+    let v: Vec<&str> = list.split(sep).map(str::trim).collect();
+    if v.iter().any(|x| x.is_empty()) {
+        return Err(format!("an empty option or level in `{whole}`"));
+    }
+    Ok(v)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn option_lists_split_as_documented() {
+        assert_eq!(super::items("a,b , c", "").unwrap(), ["a", "b", "c"]);
+        assert_eq!(
+            super::items("billing:Payments, invoicing; technical:Bugs", "").unwrap(),
+            ["billing:Payments, invoicing", "technical:Bugs"]
+        );
+        assert!(super::items("a,,b", "").is_err());
+        assert!(super::items("a,", "").is_err());
+        assert_eq!(
+            super::split_last("Is a|b true?|x,y", '|').unwrap(),
+            ("Is a|b true?", "x,y")
+        );
+    }
 }

@@ -75,17 +75,35 @@ fn local_bind(base: &str) -> Option<String> {
 /// The server answering, started if it is local and down (unless
 /// `MJEV_AUTOSTART=0`).
 pub fn ensure(client: &Client) -> Result<(), String> {
+    // A remote server is asked directly: `/health` is xks's, not part of
+    // the System One API, and nothing here can start a remote one.
+    let Some(bind) = local_bind(&client.base) else {
+        return Ok(());
+    };
     if client.healthy() {
         return Ok(());
     }
-    let Some(bind) = local_bind(&client.base) else {
-        return Err(format!("{} does not answer", client.base));
-    };
     if std::env::var("MJEV_AUTOSTART").as_deref() == Ok("0") {
         return Err(format!(
             "{} does not answer (MJEV_AUTOSTART=0; start it with mjev serve)",
             client.base
         ));
+    }
+    start(&bind)
+}
+
+/// `mjev serve`: start the local server whatever `MJEV_AUTOSTART` says
+/// (it governs starting on demand, not being asked to).
+pub fn serve(client: &Client) -> Result<(), String> {
+    let Some(bind) = local_bind(&client.base) else {
+        return Err(format!(
+            "{} is not this machine; nothing to start",
+            client.base
+        ));
+    };
+    if client.healthy() {
+        eprintln!("mjev: {} already answers", client.base);
+        return Ok(());
     }
     start(&bind)
 }

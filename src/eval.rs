@@ -52,23 +52,31 @@ pub struct Row {
     pub latency_ms: f64,
 }
 
+/// The option a gold label names: a key (a Score's level number is its
+/// key), `true`/`false` or `"true"`/`"false"` for a Noul, else a number
+/// read as an option index. `None` when it names no option, so a 1-based
+/// level or a stray key is an error, never an index past the end.
 fn gold_index(g: &Value, keys: &[String]) -> Option<usize> {
-    match g {
-        Value::Number(n) => n.as_u64().map(|x| x as usize),
-        Value::String(s) => keys.iter().position(|k| k == s).or_else(|| s.parse().ok()),
-        Value::Bool(b) => Some(if *b { 0 } else { 1 }),
+    let noul = keys.len() == 2 && keys[0] == "yes" && keys[1] == "no";
+    let key = |s: &str| keys.iter().position(|k| k == s);
+    let idx = match g {
+        Value::Number(n) => key(&n.to_string()).or_else(|| n.as_u64().map(|x| x as usize)),
+        Value::String(s) => key(s)
+            .or(match s.as_str() {
+                "true" if noul => Some(0),
+                "false" if noul => Some(1),
+                _ => None,
+            })
+            .or_else(|| s.parse().ok()),
+        Value::Bool(b) if noul => Some(if *b { 0 } else { 1 }),
         _ => None,
-    }
+    }?;
+    (idx < keys.len()).then_some(idx)
 }
 
 /// Ask Jev every case. A case whose call fails for a reason other than the
 /// request itself is counted as failed and skipped; an invalid case aborts.
 pub fn run(client: &Client, cases: &[Case]) -> Result<(Vec<Row>, usize), JevError> {
-    let prob = |m: Option<&Value>, k: &str| -> f64 {
-        m.and_then(|m| m.get(k))
-            .and_then(Value::as_f64)
-            .unwrap_or(0.0)
-    };
     let mut rows = Vec::new();
     let mut failed = 0usize;
     for (ci, c) in cases.iter().enumerate() {
@@ -90,27 +98,12 @@ pub fn run(client: &Client, cases: &[Case]) -> Result<(Vec<Row>, usize), JevErro
         };
         let questions = parse_questions(&c.questions).map_err(JevError::Invalid)?;
         let each = took.as_secs_f64() * 1e3 / questions.len().max(1) as f64;
+        let mut case_rows = Vec::new();
+        let mut malformed = None;
         for (id, q) in &questions {
-            let a = resp
-                .answers
-                .get(id)
-                .ok_or_else(|| JevError::Malformed(format!("no answer to `{id}`")))?;
-            let probs_v = a.get("probabilities");
-            let (kind, keys, probs): (&str, Vec<String>, Vec<f64>) = match q {
-                Question::Noul { .. } => {
-                    let p = a.get("noul").and_then(Value::as_f64).unwrap_or(0.5);
-                    ("noul", vec!["yes".into(), "no".into()], vec![p, 1.0 - p])
-                }
-                Question::Choice { criteria, .. } => {
-                    let keys: Vec<String> = criteria.keys().cloned().collect();
-                    let probs = keys.iter().map(|k| prob(probs_v, k)).collect();
-                    ("choice", keys, probs)
-                }
-                Question::Score { criteria, .. } => {
-                    let keys: Vec<String> = (0..criteria.len()).map(|i| i.to_string()).collect();
-                    let probs = keys.iter().map(|k| prob(probs_v, k)).collect();
-                    ("score", keys, probs)
-                }
+            let Some((kind, keys, probs)) = read_answer(q, resp.answers.get(id)) else {
+                malformed = Some(format!("no well-formed answer to `{id}`"));
+                break;
             };
             let Some(g) = c.gold.get(id) else { continue };
             let gold = gold_index(g, &keys).ok_or_else(|| {
@@ -118,7 +111,7 @@ pub fn run(client: &Client, cases: &[Case]) -> Result<(Vec<Row>, usize), JevErro
                     "case {ci} question `{id}`: gold {g} is not an option"
                 ))
             })?;
-            rows.push(Row {
+            case_rows.push(Row {
                 case_index: ci,
                 id: id.clone(),
                 kind: kind.into(),
@@ -128,8 +121,56 @@ pub fn run(client: &Client, cases: &[Case]) -> Result<(Vec<Row>, usize), JevErro
                 latency_ms: each,
             });
         }
+        match malformed {
+            Some(why) => {
+                eprintln!("case {ci}: {why} (counted as failed)");
+                failed += 1;
+            }
+            None => rows.extend(case_rows),
+        }
     }
     Ok((rows, failed))
+}
+
+/// One answer as `(kind, keys, probabilities)` in the question's order, or
+/// `None` when it is missing, of another type, or lacks what its type
+/// carries (a Noul's `noul`, every option's probability): a server's
+/// malformed answer fails its case rather than being scored as a guess.
+fn read_answer(q: &Question, a: Option<&Value>) -> Option<(&'static str, Vec<String>, Vec<f64>)> {
+    let a = a?;
+    let kind = match q {
+        Question::Noul { .. } => "noul",
+        Question::Choice { .. } => "choice",
+        Question::Score { .. } => "score",
+    };
+    if a.get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|t| t != kind)
+    {
+        return None;
+    }
+    let probs_of = |keys: &[String]| -> Option<Vec<f64>> {
+        let m = a.get("probabilities")?;
+        keys.iter()
+            .map(|k| m.get(k).and_then(Value::as_f64))
+            .collect()
+    };
+    match q {
+        Question::Noul { .. } => {
+            let p = a.get("noul").and_then(Value::as_f64)?;
+            Some((kind, vec!["yes".into(), "no".into()], vec![p, 1.0 - p]))
+        }
+        Question::Choice { criteria, .. } => {
+            let keys: Vec<String> = criteria.keys().cloned().collect();
+            let probs = probs_of(&keys)?;
+            Some((kind, keys, probs))
+        }
+        Question::Score { criteria, .. } => {
+            let keys: Vec<String> = (0..criteria.len()).map(|i| i.to_string()).collect();
+            let probs = probs_of(&keys)?;
+            Some((kind, keys, probs))
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -188,11 +229,14 @@ pub fn metrics(rows: &[Row], failed_cases: usize) -> Metrics {
         .filter(|(c, _, _)| *c > 0)
         .map(|(c, k, s)| (*c as f64 / n) * ((*k as f64 / *c as f64) - (s / *c as f64)).abs())
         .sum();
+    // Coverage is what a confidence threshold accepts, and a threshold
+    // cannot split rows of equal confidence: cut only where it changes.
     gated.sort_by(|a, b| b.0.total_cmp(&a.0));
     let (mut best, mut wrong) = (0usize, 0usize);
-    for (i, (_, ok)) in gated.iter().enumerate() {
+    for (i, (c, ok)) in gated.iter().enumerate() {
         wrong += usize::from(!ok);
-        if wrong as f64 / (i + 1) as f64 <= 0.05 {
+        let boundary = gated.get(i + 1).is_none_or(|next| next.0 != *c);
+        if boundary && wrong as f64 / (i + 1) as f64 <= 0.05 {
             best = i + 1;
         }
     }
@@ -250,5 +294,45 @@ mod tests {
         assert!((m.accuracy - 2.0 / 3.0).abs() < 1e-9);
         assert_eq!(m.accuracy_by_kind["score"], 0.0);
         assert!(m.brier > 0.0 && m.ece >= 0.0);
+    }
+
+    #[test]
+    fn a_gold_label_names_an_option_or_nothing() {
+        use serde_json::json;
+        let k = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(gold_index(&json!(true), &k(&["yes", "no"])), Some(0));
+        assert_eq!(gold_index(&json!("false"), &k(&["yes", "no"])), Some(1));
+        assert_eq!(gold_index(&json!(3), &k(&["0", "1", "2"])), None);
+        assert_eq!(gold_index(&json!("5"), &k(&["0", "1", "2"])), None);
+        assert_eq!(gold_index(&json!(32), &k(&["16", "32", "64"])), Some(1));
+    }
+
+    #[test]
+    fn coverage_does_not_split_tied_confidences() {
+        let rows: Vec<Row> = (0..20)
+            .map(|i| row("noul", &[0.9, 0.1], usize::from(i >= 10)))
+            .collect();
+        assert_eq!(metrics(&rows, 0).coverage_at_5pct_error, 0.0);
+    }
+
+    #[test]
+    fn a_malformed_answer_is_not_scored_as_a_guess() {
+        use serde_json::json;
+        let choice: Question = serde_json::from_value(
+            json!({"type": "choice", "instructions": "?", "criteria": {"a": null, "b": null}}),
+        )
+        .unwrap();
+        let noul: Question =
+            serde_json::from_value(json!({"type": "noul", "instructions": "?"})).unwrap();
+        assert!(read_answer(&choice, None).is_none());
+        assert!(read_answer(&choice, Some(&json!({"type": "choice", "choice": "a"}))).is_none());
+        assert!(read_answer(&choice, Some(&json!({"type": "noul", "noul": 0.5}))).is_none());
+        assert!(read_answer(&noul, Some(&json!({"type": "noul"}))).is_none());
+        let ok = read_answer(
+            &choice,
+            Some(&json!({"type": "choice", "probabilities": {"a": 0.7, "b": 0.3}})),
+        )
+        .unwrap();
+        assert_eq!(ok.2, vec![0.7, 0.3]);
     }
 }

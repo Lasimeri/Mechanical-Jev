@@ -44,17 +44,28 @@ fn tokenizers() -> Vec<(String, Tokenizer)> {
     let dir = std::env::var("JEVRE_TOKENIZERS")
         .unwrap_or_else(|_| repo().join("tools/jevre/tokenizers").display().to_string());
     let mut out = Vec::new();
-    let mut names: Vec<_> = std::fs::read_dir(&dir)
-        .unwrap_or_else(|e| panic!("{dir}: {e} (see tools/jevre/main.md)"))
+    let entries = std::fs::read_dir(&dir).unwrap_or_else(|e| {
+        eprintln!(
+            "jevre: no tokenizers at {dir} ({e}); run `make tokenizers` (pinned in \
+             tools/jevre/TOKENIZERS), or set JEVRE_TOKENIZERS; see tools/jevre/src/main.md"
+        );
+        std::process::exit(2)
+    });
+    let mut names: Vec<_> = entries
         .flatten()
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .collect();
     names.sort();
     for n in names {
         let f = format!("{dir}/{n}/tokenizer.json");
-        if let Ok(t) = Tokenizer::from_file(&f) {
-            out.push((n, t));
+        match Tokenizer::from_file(&f) {
+            Ok(t) => out.push((n, t)),
+            Err(e) => eprintln!("jevre: skipping {f}: {e}"),
         }
+    }
+    if out.is_empty() {
+        eprintln!("jevre: no loadable tokenizer.json under {dir}; run `make tokenizers`");
+        std::process::exit(2)
     }
     out
 }

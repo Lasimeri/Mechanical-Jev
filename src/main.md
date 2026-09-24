@@ -9,3 +9,9 @@ prints what Jev most likely does with a request
 ([`reconstruction.rs`](reconstruction.md)); `evidence` writes Jev's
 published answers as cases and rows ([`evidence.rs`](evidence.md)).
 `eval` adds the model, the case count and the wall time to its metrics.
+
+`--choice id=instructions|options` and `--score id=instructions|levels`:
+the last `|` starts the options, so instructions may contain `|`; options
+or levels are separated by `;` when there is one (so a description may
+contain commas), else by `,`. An empty option, an option without a key,
+and a key given twice are errors.

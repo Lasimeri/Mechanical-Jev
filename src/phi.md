@@ -4,9 +4,11 @@
 (`127.0.0.1` or `localhost`) and does not answer, it runs Intel Phi Jev's
 `xks serve --detach --bind host:port`, which loads the subject and site
 from that repository's `xks.conf`, puts the Phi cards to work, and returns
-once the server answers (about 45 s for the 35B). A remote server that does
-not answer is an error, never started. `MJEV_AUTOSTART=0` turns the
-starting off. `stop` runs `xks stop`, which ends the server and releases
+once the server answers (about 45 s for the 35B). A remote server is
+never health-checked or started: `/health` is xks's, not part of the System
+One API, so a request to a remote base goes straight to it and its own
+error, if any, is the answer. `MJEV_AUTOSTART=0` turns starting on demand
+off; `mjev serve` (`serve`) starts the local server regardless. `stop` runs `xks stop`, which ends the server and releases
 the cards' huge pages.
 
 Measured 2026-09-24, from a stopped server: `mjev query` of

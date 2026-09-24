@@ -17,6 +17,23 @@ use crate::protocol::{parse_questions, Request, Response};
 pub const DEFAULT_BASE: &str = "http://127.0.0.1:8090";
 pub const DEFAULT_MODEL: &str = "jev-latest";
 
+/// The longest a `Retry-After` is honoured for one wait.
+pub const MAX_RETRY_WAIT: Duration = Duration::from_secs(60);
+
+/// A `Retry-After` in seconds, when it is one (finite, not negative), at
+/// most [`MAX_RETRY_WAIT`]. The HTTP-date form and anything else read as
+/// none, and the client's own backoff applies.
+pub fn retry_after(header: Option<&str>) -> Option<Duration> {
+    let s: f64 = header?.trim().parse().ok()?;
+    (s.is_finite() && s >= 0.0)
+        .then(|| Duration::from_secs_f64(s.min(MAX_RETRY_WAIT.as_secs_f64())))
+}
+
+/// An environment variable that is set and not blank.
+fn env_nonempty(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|v| !v.trim().is_empty())
+}
+
 #[derive(Debug, Error)]
 pub enum JevError {
     #[error("the request is invalid: {0}")]
@@ -55,14 +72,13 @@ impl Client {
     /// same settings drive them).
     pub fn from_env() -> Self {
         Self {
-            base: std::env::var("TYPESAFE_BASE_URL")
-                .unwrap_or_else(|_| DEFAULT_BASE.into())
+            base: env_nonempty("TYPESAFE_BASE_URL")
+                .unwrap_or_else(|| DEFAULT_BASE.into())
+                .trim()
                 .trim_end_matches('/')
                 .to_string(),
-            api_key: std::env::var("TYPESAFE_API_KEY")
-                .ok()
-                .filter(|k| !k.trim().is_empty()),
-            model: std::env::var("TYPESAFE_DEFAULT_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into()),
+            api_key: env_nonempty("TYPESAFE_API_KEY").map(|k| k.trim().to_string()),
+            model: env_nonempty("TYPESAFE_DEFAULT_MODEL").unwrap_or_else(|| DEFAULT_MODEL.into()),
             attempts: 5,
             timeout: Duration::from_secs(600),
         }
@@ -115,10 +131,7 @@ impl Client {
                     return Ok((out, took));
                 }
                 Err(ureq::Error::Status(code, resp)) => {
-                    let retry_after = resp
-                        .header("Retry-After")
-                        .and_then(|s| s.trim().parse::<f64>().ok())
-                        .map(Duration::from_secs_f64);
+                    let retry_after = retry_after(resp.header("Retry-After"));
                     let text = resp.into_string().unwrap_or_default();
                     match code {
                         401 => return Err(JevError::Unauthorized),
@@ -152,5 +165,30 @@ impl Client {
             }
             Err(e) => Err(JevError::Transport(e.to_string())),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{retry_after, MAX_RETRY_WAIT};
+    use std::time::Duration;
+
+    #[test]
+    fn retry_after_is_bounded_and_never_panics() {
+        assert_eq!(retry_after(Some("2")), Some(Duration::from_secs(2)));
+        assert_eq!(retry_after(Some(" 0.5 ")), Some(Duration::from_millis(500)));
+        assert_eq!(retry_after(Some("3600")), Some(MAX_RETRY_WAIT));
+        for bad in [
+            "-1",
+            "inf",
+            "NaN",
+            "1e300",
+            "Wed, 21 Oct 2015 07:28:00 GMT",
+            "",
+        ] {
+            let d = retry_after(Some(bad));
+            assert!(d.is_none() || d == Some(MAX_RETRY_WAIT), "{bad}: {d:?}");
+        }
+        assert_eq!(retry_after(None), None);
     }
 }

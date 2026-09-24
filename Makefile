@@ -3,7 +3,7 @@
 .DEFAULT_GOAL := help
 MJEV := target/release/mjev
 
-.PHONY: help build query eval models reconstruct evidence closeness serve stop test fmt clippy docs-check tool-check check clean
+.PHONY: help build query eval models reconstruct evidence tokenizers closeness serve stop test fmt clippy docs-check tool-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -29,10 +29,20 @@ closeness: build ## Ask Intel Phi Jev Jev's published questions and compare with
 	$(MJEV) stop
 	$(MJEV) corroborate target/evidence-jev-rows.jsonl target/closeness-rows.jsonl --temperature
 
-evidence: ## The reverse-engineering fits (JEVRE_TOKENIZERS names tokenizer.json files)
-	cd tools/jevre && cargo run --release --offline -- input
-	cd tools/jevre && cargo run --release --offline -- output
+evidence: ## The reverse-engineering fits, offline (the token-count fits need make tokenizers)
 	cd tools/jevre && cargo run --release --offline -- probs
+	@if [ -n "$$JEVRE_TOKENIZERS" ] || [ -d tools/jevre/tokenizers ]; then \
+		cd tools/jevre && cargo run --release --offline -- input && cargo run --release --offline -- output; \
+	else echo "evidence: input and output fits skipped, no tokenizers (make tokenizers)"; fi
+
+tokenizers: ## Fetch the nine tokenizer.json files the fits read, pinned and sha256-checked (tools/jevre/TOKENIZERS)
+	@grep -v '^#' tools/jevre/TOKENIZERS | while read -r name repo rev sha; do \
+		f=tools/jevre/tokenizers/$$name/tokenizer.json; \
+		if [ -f "$$f" ] && echo "$$sha  $$f" | sha256sum -c --status; then echo "$$name: present"; continue; fi; \
+		hf download "$$repo" tokenizer.json --revision "$$rev" --local-dir "tools/jevre/tokenizers/$$name" >/dev/null || exit 1; \
+		echo "$$sha  $$f" | sha256sum -c --quiet || exit 1; \
+		echo "$$name: fetched"; \
+	done
 
 serve: build ## Start Intel Phi Jev's server
 	$(MJEV) serve

@@ -11,7 +11,15 @@ and a directory of `tokenizer.json` files, and calls nothing.
 `JEVRE_TOKENIZERS` holds one subdirectory per tokenizer, each with its
 `tokenizer.json` (the tokenizer files of public models; the analysis used
 o200k, gpt-oss, cl100k, Llama 3, Phi-4, Qwen3, Gemma 3, Mistral and
-DeepSeek V3). They are not in the repository.
+DeepSeek V3), by default `tools/jevre/tokenizers/`. They are not in the
+repository: [`TOKENIZERS`](../TOKENIZERS) pins each one (repository,
+revision, sha256 of the file the analysis read), and `make tokenizers`
+fetches them with `hf download` at those revisions and checks the sums; it
+is the only step that uses the network, and it downloads files, it calls
+no model. `make evidence` runs `probs` always and `input` and `output`
+when the tokenizers are there; without them `jevre` says so and exits 2
+rather than panicking (before 2026-09-24 a fresh checkout's
+`make evidence` stopped on a panic).
 
 - `input`: fits `input_tokens` as a fixed preamble, the state, and each
   question's JSON plus a wrapper by type, for every tokenizer and

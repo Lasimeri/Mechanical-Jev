@@ -21,18 +21,77 @@ pub fn repo_root() -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// A value the way a shell reads it, for what these files use: segments
+/// unquoted, `"double"` (with `$HOME` expanded, `\"` and `\\` escaped) or
+/// `'single'` (literal), joined; a leading `~/` expanded; an unquoted `#`
+/// at the start or after a blank starts a comment, and unquoted blanks end
+/// the value. `$HOME` and `${HOME}` expand only as that whole name, so
+/// `$HOMEBREW` stays as written.
 fn expand(v: &str, home: &str) -> String {
-    let v = v.trim();
-    let v = v
-        .strip_prefix('"')
-        .and_then(|s| s.strip_suffix('"'))
-        .or_else(|| v.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
-        .unwrap_or(v);
-    let v = match v.strip_prefix("~/") {
-        Some(rest) => format!("{home}/{rest}"),
-        None => v.to_string(),
+    let v = v.trim_start();
+    let home_at = |s: &[char], i: usize| -> Option<usize> {
+        let rest: String = s[i..].iter().take(8).collect();
+        if rest.starts_with("${HOME}") {
+            return Some(7);
+        }
+        let word = rest.starts_with("$HOME")
+            && !s
+                .get(i + 5)
+                .is_some_and(|c| c.is_ascii_alphanumeric() || *c == '_');
+        word.then_some(5)
     };
-    v.replace("${HOME}", home).replace("$HOME", home)
+    let s: Vec<char> = v.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    if v.starts_with("~/") {
+        out.push_str(home);
+        i = 1;
+    }
+    while i < s.len() {
+        match s[i] {
+            '\'' => {
+                i += 1;
+                while i < s.len() && s[i] != '\'' {
+                    out.push(s[i]);
+                    i += 1;
+                }
+                i += 1;
+            }
+            '"' => {
+                i += 1;
+                while i < s.len() && s[i] != '"' {
+                    if s[i] == '\\' && matches!(s.get(i + 1), Some('"' | '\\' | '$')) {
+                        out.push(s[i + 1]);
+                        i += 2;
+                    } else if let Some(n) = (s[i] == '$').then(|| home_at(&s, i)).flatten() {
+                        out.push_str(home);
+                        i += n;
+                    } else {
+                        out.push(s[i]);
+                        i += 1;
+                    }
+                }
+                i += 1;
+            }
+            c if c.is_whitespace() => break,
+            '#' if i == 0 => break,
+            '$' => match home_at(&s, i) {
+                Some(n) => {
+                    out.push_str(home);
+                    i += n;
+                }
+                None => {
+                    out.push('$');
+                    i += 1;
+                }
+            },
+            c => {
+                out.push(c);
+                i += 1;
+            }
+        }
+    }
+    out
 }
 
 /// Parse one file into (key, value) pairs.
@@ -41,7 +100,10 @@ pub fn parse(text: &str, home: &str) -> Vec<(String, String)> {
         .map(str::trim)
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .filter_map(|l| {
-            let l = l.strip_prefix("export ").unwrap_or(l);
+            let l = l
+                .strip_prefix("export")
+                .filter(|r| r.starts_with(char::is_whitespace))
+                .map_or(l, str::trim_start);
             let (k, v) = l.split_once('=')?;
             let k = k.trim();
             if k.is_empty() || !k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
@@ -101,6 +163,28 @@ mod tests {
                 ("TYPESAFE_BASE_URL".into(), "https://api.typesafe.ai".into()),
                 ("X".into(), "/h/y".into()),
             ]
+        );
+    }
+
+    #[test]
+    fn values_read_as_a_shell_reads_them() {
+        let v = |s: &str| super::expand(s, "/h");
+        assert_eq!(v("0  # off"), "0");
+        assert_eq!(v("\"v\" # c"), "v");
+        assert_eq!(v("'$HOME/x'"), "$HOME/x");
+        assert_eq!(v("$HOMEBREW_PREFIX/bin"), "$HOMEBREW_PREFIX/bin");
+        assert_eq!(v("${HOME}/a"), "/h/a");
+        assert_eq!(
+            v("\"$HOME/Intel Phi Jev\"/target"),
+            "/h/Intel Phi Jev/target"
+        );
+        assert_eq!(v("\"a \\\"q\\\" b\""), "a \"q\" b");
+        assert_eq!(v("~/m"), "/h/m");
+        assert_eq!(v(""), "");
+        let kv = super::parse("export\tA=1\nexportB=2\n", "/h");
+        assert_eq!(
+            kv,
+            vec![("A".into(), "1".into()), ("exportB".into(), "2".into())]
         );
     }
 }

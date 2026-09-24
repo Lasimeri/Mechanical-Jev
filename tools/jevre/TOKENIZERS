@@ -1,0 +1,12 @@
+# The tokenizers the input and output fits read: name, Hugging Face repository,
+# revision, sha256 of its tokenizer.json. make tokenizers fetches and checks
+# them into tools/jevre/tokenizers/NAME/ (not tracked). See src/main.md.
+o200k      Xenova/gpt-4o                                      7956d98f2a83b2751a98ea7136fdf7fe6cf54e69 43a3ad4618a6a938f8c2614154ea10c31ad53a62d5683ae0b0e6133575cef07e
+cl100k     Xenova/gpt-4                                       1d9f1f1b1fae88c0e4df1dab0a397f8de6229075 239eb2359f79c38497476671aaa835e01fb43d42743c612a8514a0dfa2ac93a2
+gptoss     openai/gpt-oss-20b                                 6cee5e81ee83917806bbde320786a8fb61efebee 0614fe83cadab421296e664e1f48f4261fa8fef6e03e63bb75c20f38e37d07d3
+qwen3      Qwen/Qwen3-8B                                      b968826d9c46dd6066d109eabc6255188de91218 aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4
+llama3     unsloth/Llama-3.2-1B-Instruct                      5a8abab4a5d6f164389b1079fb721cfab8d7126c 6b9e4e7fb171f92fd137b777cc2714bf87d11576700a1dcd7a399e7bbe39537b
+gemma3     unsloth/gemma-3-1b-it                              5b11413a10db4e486ef16a20101fd028f8f2499c 4667f2089529e8e7657cfb6d1c19910ae71ff5f28aa7ab2ff2763330affad795
+mistral    unsloth/Mistral-Small-3.1-24B-Instruct-2503        7ffb21b8e7524696762ab6e8ede9f57b565e211b b76085f9923309d873994d444989f7eb6ec074b06f25b58f1e8d7b7741070949
+deepseek3  deepseek-ai/DeepSeek-V3                            e815299b0bcbac849fa540c768ef21845365c9eb 621ac2e32d0dba658404412318818aaa8ce8cda492e59830109d8da6b517fb41
+phi4       microsoft/phi-4                                    2db69c1c3e91a05d2c64a3185acfbaf36f744e25 9f38d05d9d25756bb2f181ab5a0cebcd59e638df10336fc7ed1010f7296d0298
