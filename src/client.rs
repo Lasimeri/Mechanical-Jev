@@ -1,7 +1,10 @@
-//! The client for TypeSafe's API: `POST /v1/systemone` and `GET /v1/models`,
-//! with the key as a bearer token and the retries TypeSafe documents:
-//! a 429 (rate limit) or 529 (overloaded) is retried with exponential
-//! backoff, honouring `Retry-After`; 401 and 422 are not. See client.md.
+//! The client for a System One server: `POST /v1/systemone` and
+//! `GET /v1/models`. By default the server is Intel Phi Jev's `xks` on this
+//! machine (`http://127.0.0.1:8090`), which answers the same wire format
+//! from a local model on this host and its Xeon Phi cards, and needs no
+//! key. A key, when set, goes as a bearer token; a 429 or 529 is retried
+//! with exponential backoff, honouring `Retry-After`; 401 and 422 are not.
+//! See client.md.
 
 use std::time::{Duration, Instant};
 
@@ -10,16 +13,15 @@ use thiserror::Error;
 
 use crate::protocol::{parse_questions, Request, Response};
 
-pub const DEFAULT_BASE: &str = "https://api.typesafe.ai";
+/// Intel Phi Jev's server on this machine.
+pub const DEFAULT_BASE: &str = "http://127.0.0.1:8090";
 pub const DEFAULT_MODEL: &str = "jev-latest";
 
 #[derive(Debug, Error)]
 pub enum JevError {
-    #[error("no API key: set TYPESAFE_API_KEY (console.typesafe.ai), e.g. in mjev.local.conf")]
-    NoKey,
     #[error("the request is invalid: {0}")]
     Invalid(String),
-    #[error("401: missing or invalid API key")]
+    #[error("401: the server wants a key (TYPESAFE_API_KEY, e.g. in mjev.local.conf)")]
     Unauthorized,
     #[error("422: the request failed validation: {0}")]
     Unprocessable(String),
@@ -36,39 +38,59 @@ pub enum JevError {
 #[derive(Debug, Clone)]
 pub struct Client {
     pub base: String,
-    pub api_key: String,
+    /// Sent as a bearer token when set; the local server needs none.
+    pub api_key: Option<String>,
     pub model: String,
     /// Attempts for a 429 or 529, the first included.
     pub attempts: u32,
+    /// A request's time limit. A local model reads a long session in
+    /// seconds to minutes, not the hosted service's milliseconds.
     pub timeout: Duration,
 }
 
 impl Client {
-    /// From the environment: `TYPESAFE_API_KEY`, `TYPESAFE_BASE_URL`,
-    /// `TYPESAFE_DEFAULT_MODEL` (the official SDKs' variable names).
-    pub fn from_env() -> Result<Self, JevError> {
-        let api_key = std::env::var("TYPESAFE_API_KEY").map_err(|_| JevError::NoKey)?;
-        if api_key.trim().is_empty() {
-            return Err(JevError::NoKey);
-        }
-        Ok(Self {
+    /// From the environment: `TYPESAFE_BASE_URL` (default Intel Phi Jev's
+    /// server on this machine), `TYPESAFE_API_KEY` (optional),
+    /// `TYPESAFE_DEFAULT_MODEL` (the official SDKs' variable names, so the
+    /// same settings drive them).
+    pub fn from_env() -> Self {
+        Self {
             base: std::env::var("TYPESAFE_BASE_URL")
                 .unwrap_or_else(|_| DEFAULT_BASE.into())
                 .trim_end_matches('/')
                 .to_string(),
-            api_key,
+            api_key: std::env::var("TYPESAFE_API_KEY")
+                .ok()
+                .filter(|k| !k.trim().is_empty()),
             model: std::env::var("TYPESAFE_DEFAULT_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.into()),
             attempts: 5,
-            timeout: Duration::from_secs(60),
-        })
+            timeout: Duration::from_secs(600),
+        }
     }
 
     fn agent(&self) -> ureq::Agent {
         ureq::AgentBuilder::new().timeout(self.timeout).build()
     }
 
-    /// Ask Jev. Returns the response and the end-to-end time of the call
-    /// that succeeded.
+    fn authorize(&self, r: ureq::Request) -> ureq::Request {
+        match &self.api_key {
+            Some(k) => r.set("Authorization", &format!("Bearer {k}")),
+            None => r,
+        }
+    }
+
+    /// Whether the server answers `GET /health`.
+    pub fn healthy(&self) -> bool {
+        ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .get(&format!("{}/health", self.base))
+            .call()
+            .is_ok()
+    }
+
+    /// Ask the server. Returns the response and the end-to-end time of the
+    /// call that succeeded.
     pub fn system_one(&self, req: &Request) -> Result<(Response, Duration), JevError> {
         parse_questions(&req.questions).map_err(JevError::Invalid)?;
         let mut body = serde_json::to_value(req).map_err(|e| JevError::Invalid(e.to_string()))?;
@@ -81,10 +103,7 @@ impl Client {
         let mut last = String::new();
         for attempt in 1..=self.attempts {
             let t0 = Instant::now();
-            let r = agent
-                .post(&url)
-                .set("Authorization", &format!("Bearer {}", self.api_key))
-                .send_json(body.clone());
+            let r = self.authorize(agent.post(&url)).send_json(body.clone());
             let took = t0.elapsed();
             match r {
                 Ok(resp) => {
@@ -120,15 +139,10 @@ impl Client {
         Err(JevError::Exhausted(self.attempts, last))
     }
 
-    /// The models this key can use (`GET /v1/models`), as TypeSafe returns them.
+    /// The models the server serves (`GET /v1/models`).
     pub fn models(&self) -> Result<Value, JevError> {
         let url = format!("{}/v1/models", self.base);
-        match self
-            .agent()
-            .get(&url)
-            .set("Authorization", &format!("Bearer {}", self.api_key))
-            .call()
-        {
+        match self.authorize(self.agent().get(&url)).call() {
             Ok(r) => r
                 .into_json()
                 .map_err(|e| JevError::Malformed(e.to_string())),

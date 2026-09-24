@@ -3,7 +3,7 @@
 .DEFAULT_GOAL := help
 MJEV := target/release/mjev
 
-.PHONY: help build query eval models test fmt clippy docs-check check clean
+.PHONY: help build query eval models serve stop test fmt clippy docs-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
@@ -11,14 +11,20 @@ help: ## Show this help
 build: ## Build mjev
 	cargo build --release
 
-query: build ## Ask Jev examples/query.json
+query: build ## Ask examples/query.json (starts Intel Phi Jev if it is down)
 	$(MJEV) query --file examples/query.json
 
-eval: build ## Score the long real sessions with Jev; rows in target/eval-rows.jsonl
+eval: build ## Score the long real sessions; rows in target/eval-rows.jsonl
 	$(MJEV) eval examples/long_sessions.jsonl --rows target/eval-rows.jsonl
 
-models: build ## The models your key can use
+models: build ## What the server serves
 	$(MJEV) models
+
+serve: build ## Start Intel Phi Jev's server
+	$(MJEV) serve
+
+stop: build ## Stop it and release the Phi cards
+	$(MJEV) stop
 
 test: ## Unit tests (no key needed)
 	cargo test --release

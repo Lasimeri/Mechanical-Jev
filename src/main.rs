@@ -8,13 +8,13 @@ use serde_json::{json, Map, Value};
 
 use mechanical_jev::client::Client;
 use mechanical_jev::protocol::Request;
-use mechanical_jev::{config, corroborate, eval};
+use mechanical_jev::{config, corroborate, eval, phi};
 
 #[derive(Parser)]
 #[command(
     name = "mjev",
     version,
-    about = "Mechanical Jev: TypeSafe's Jev (System One: noul, choice, score) from the command line"
+    about = "Mechanical Jev: System One questions (noul, choice, score) to Intel Phi Jev from the command line"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -59,8 +59,12 @@ enum Cmd {
         #[arg(long)]
         pairs: bool,
     },
-    /// The models this key can use.
+    /// The models the server serves.
     Models,
+    /// Start Intel Phi Jev's server (the other commands start it when needed).
+    Serve,
+    /// Stop Intel Phi Jev's server and release the Phi cards.
+    Stop,
 }
 
 fn main() {
@@ -90,7 +94,18 @@ fn run() -> Result<(), String> {
         println!("{}", serde_json::to_string_pretty(&r).unwrap());
         return Ok(());
     }
-    let client = Client::from_env().map_err(|e| e.to_string())?;
+    let client = Client::from_env();
+    match cli.cmd {
+        Cmd::Serve => {
+            if client.healthy() {
+                eprintln!("mjev: {} already answers", client.base);
+                return Ok(());
+            }
+            return phi::ensure(&client);
+        }
+        Cmd::Stop => return phi::stop(),
+        _ => phi::ensure(&client)?,
+    }
     match cli.cmd {
         Cmd::Query {
             file,
@@ -132,7 +147,7 @@ fn run() -> Result<(), String> {
             println!("{}", serde_json::to_string_pretty(&m).unwrap());
             Ok(())
         }
-        Cmd::Corroborate { .. } => Ok(()),
+        Cmd::Corroborate { .. } | Cmd::Serve | Cmd::Stop => Ok(()),
     }
 }
 

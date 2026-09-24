@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.80"
 license = "MIT OR Apache-2.0"
-description = "Mechanical Jev: a Rust client, command line and evaluation harness for TypeSafe's Jev, the System One model (noul / choice / score)"
+description = "Mechanical Jev: System One questions (noul / choice / score) to Intel Phi Jev from Rust: client library, mjev command line, evaluation harness"
 readme = "README.md"
 repository = "https://github.com/Lasimeri/Mechanical-Jev"
 
