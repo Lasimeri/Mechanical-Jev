@@ -24,7 +24,9 @@ lowercase. Nothing here changes what the app holds but scroll positions.
   the state's first line), where the selected one is from and its note.
 - **server**: address, state, subject, models, which `xks`, where the logs
   are, and the last lines `xks` wrote.
-- **help**: the keys.
+- **help**: the keys, scrolling with `↑` `↓` when they outnumber the rows
+  (the rule says which way there is more); a test keeps every row inside
+  80 columns.
 
 Every screen has a header (where you are on the left, the server or the
 running job with a spinner on the right) and a footer (the status or a

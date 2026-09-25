@@ -748,7 +748,7 @@ const KEYS: &[(&str, &str, &str)] = &[
     (
         "anywhere",
         "ctrl+c, ctrl+q",
-        "quit (twice while a job runs); the draft is kept",
+        "quit (twice mid-job); the draft is kept",
     ),
     ("anywhere", "f1", "help; esc goes back"),
     ("anywhere", "esc", "back (a form: cancel)"),
@@ -757,10 +757,21 @@ const KEYS: &[(&str, &str, &str)] = &[
     (
         "ask",
         "f5, ctrl+s",
-        "ask; starts the local server when it is down",
+        "ask; starts a local server that is down",
     ),
     ("ask", "tab", "the state or the questions"),
     ("ask, state", "keys, paste", "edit; enter is a new line"),
+    (
+        "any text",
+        "ctrl+z",
+        "undo: a word, a run of erasing, a paste",
+    ),
+    (
+        "any text",
+        "ctrl+a e k u w",
+        "home, end, erase to end, to start, a word",
+    ),
+    ("any text", "ctrl or alt+← →", "a word left, right"),
     ("ask, questions", "↑ ↓", "choose a question"),
     ("ask, questions", "a  enter or e  d", "add, edit, delete"),
     ("ask, questions", "l  w", "load or write a request file"),
@@ -772,7 +783,7 @@ const KEYS: &[(&str, &str, &str)] = &[
     (
         "form",
         "ctrl+s, f2",
-        "save (checked first); esc twice drops changes",
+        "save, checked first; esc twice drops edits",
     ),
     (
         "a file prompt",
@@ -786,11 +797,19 @@ const KEYS: &[(&str, &str, &str)] = &[
     ),
 ];
 
-fn help(f: &mut Frame, a: &App) {
+fn help(f: &mut Frame, a: &mut App) {
     let (w, h) = (f.width as usize, f.height as usize);
     header(f, a, "help");
-    f.set(1, rule(1, "keys", w.saturating_sub(2), false), theme::BG);
-    for (i, (where_, keys, does)) in KEYS.iter().enumerate().take(h - 4) {
+    let room = h - 4;
+    a.help_top = a.help_top.min(KEYS.len().saturating_sub(room));
+    let more = match (a.help_top > 0, a.help_top + room < KEYS.len()) {
+        (false, false) => "keys",
+        (false, true) => "keys · ↓ more",
+        (true, false) => "keys · ↑ more",
+        (true, true) => "keys · ↑ ↓ more",
+    };
+    f.set(1, rule(1, more, w.saturating_sub(2), false), theme::BG);
+    for (i, (where_, keys, does)) in KEYS.iter().skip(a.help_top).take(room).enumerate() {
         f.set(
             (2 + i) as u16,
             vec![
@@ -802,5 +821,19 @@ fn help(f: &mut Frame, a: &App) {
             theme::BG,
         );
     }
-    footer(f, a, &[("esc", "back")]);
+    footer(f, a, &[("esc", "back"), ("↑ ↓", "scroll")]);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_help_row_fits_80_columns() {
+        for (where_, keys, does) in super::KEYS {
+            let n = 2 + 17 + 18 + does.chars().count();
+            assert!(
+                n <= 80 && where_.chars().count() < 17 && keys.chars().count() < 18,
+                "{does}: {n}"
+            );
+        }
+    }
 }

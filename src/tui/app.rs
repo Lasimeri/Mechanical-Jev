@@ -345,26 +345,43 @@ pub struct App {
     pub draft_file: Option<PathBuf>,
     pub quit: bool,
     pub spin: usize,
+    /// The first row of the help shown.
+    pub help_top: usize,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
     health_pending: bool,
     last_health: Option<Instant>,
 }
 
-/// An editor's keys; whether the key was one.
+/// An editor's keys, readline's included; whether the key was one.
 fn edit(e: &mut Editor, k: KeyEvent) -> bool {
-    let plain = !k
-        .modifiers
-        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+    let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = k.modifiers.contains(KeyModifiers::ALT);
     match k.code {
-        KeyCode::Char(c) if plain => e.insert_char(c),
+        KeyCode::Char('a') if ctrl => e.home(),
+        KeyCode::Char('e') if ctrl => e.end(),
+        KeyCode::Char('k') if ctrl => e.kill_to_end(),
+        KeyCode::Char('u') if ctrl => e.kill_to_start(),
+        // Ctrl+W, and Ctrl+Backspace where the terminal sends ^H for it.
+        KeyCode::Char('w' | 'h') if ctrl => e.delete_word_back(),
+        KeyCode::Char('z') if ctrl => {
+            e.undo();
+        }
+        KeyCode::Char('b') if alt => e.word_left(),
+        KeyCode::Char('f') if alt => e.word_right(),
+        KeyCode::Char(c) if !ctrl && !alt => e.insert_char(c),
         KeyCode::Enter => e.newline(),
+        KeyCode::Backspace if ctrl || alt => e.delete_word_back(),
         KeyCode::Backspace => e.backspace(),
         KeyCode::Delete => e.delete(),
+        KeyCode::Left if ctrl || alt => e.word_left(),
+        KeyCode::Right if ctrl || alt => e.word_right(),
         KeyCode::Left => e.left(),
         KeyCode::Right => e.right(),
         KeyCode::Up => e.up(),
         KeyCode::Down => e.down(),
+        KeyCode::Home if ctrl => e.to_start(),
+        KeyCode::End if ctrl => e.to_end(),
         KeyCode::Home => e.home(),
         KeyCode::End => e.end(),
         KeyCode::PageUp => e.page(-10),
@@ -401,6 +418,7 @@ impl App {
             status: None,
             quit: false,
             spin: 0,
+            help_top: 0,
             tx,
             rx,
             health_pending: false,
@@ -506,11 +524,15 @@ impl App {
             Screen::Form => self.form_key(k, ctrl),
             Screen::Examples => self.examples_key(k),
             Screen::Server => self.server_key(k),
-            Screen::Help => {
-                if matches!(k.code, KeyCode::Esc | KeyCode::F(1) | KeyCode::Enter) {
-                    self.screen = self.before_help;
-                }
-            }
+            Screen::Help => match k.code {
+                KeyCode::Esc | KeyCode::F(1) | KeyCode::Enter => self.screen = self.before_help,
+                // The view keeps it inside the table.
+                KeyCode::Up => self.help_top = self.help_top.saturating_sub(1),
+                KeyCode::Down => self.help_top += 1,
+                KeyCode::PageUp => self.help_top = self.help_top.saturating_sub(10),
+                KeyCode::PageDown => self.help_top += 10,
+                _ => {}
+            },
         }
     }
 

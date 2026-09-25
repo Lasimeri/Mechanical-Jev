@@ -66,6 +66,9 @@ filled cells `█`, copper for the chosen option and `#7a5c38` (the site's
 | ask | `F5`, `Ctrl+S` | ask (starts the local server when it is down) |
 | ask | `Tab` | state or questions |
 | ask, state | keys, paste | edit; `Enter` is a new line |
+| any text | `Ctrl+Z` | undo: a word typed, a run of erasing, a paste, a kill |
+| any text | `Ctrl+A` `E` `K` `U` `W` (and `Ctrl+Backspace`) | home, end, erase to the end, to the start, the word before |
+| any text | `Ctrl` or `Alt` with `←` `→` (`Alt+B`, `Alt+F`); `Ctrl+Home`, `Ctrl+End` | a word left, right; the text's start, end |
 | ask, questions | `↑` `↓`; `a` add; `Enter` or `e` edit; `d` delete | the list |
 | ask, questions | `l` load a request file; `w` write one; `r` write the last answer; `x` examples | files |
 | ask, questions | `u` undo a delete; `n` twice, a new draft | the draft |

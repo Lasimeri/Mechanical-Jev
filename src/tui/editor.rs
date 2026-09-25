@@ -23,7 +23,23 @@ pub struct Editor {
     goal: Option<usize>,
     /// The cursor's place in the last view, when wrapping.
     screen: (usize, usize),
+    /// The text and cursor before each undoable step, newest last.
+    history: Vec<(Vec<Vec<char>>, usize, usize)>,
+    /// The kind of the step in progress: a run of one kind is one step.
+    step: Option<Step>,
 }
+
+/// What an edit was, so a run of typing (up to a space) or of erasing
+/// undoes as one step; anything else is a step of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Step {
+    Type,
+    Erase,
+    Other,
+}
+
+/// The most steps `undo` goes back.
+const HISTORY: usize = 100;
 
 /// Where each drawn row of a line starts, wrapped at `w` columns: after the
 /// last space that fits, else at `w` (a word longer than the row). A space
@@ -70,6 +86,8 @@ impl Editor {
             width: 0,
             goal: None,
             screen: (0, 0),
+            history: Vec::new(),
+            step: None,
         }
     }
 
@@ -95,6 +113,8 @@ impl Editor {
         self.top = 0;
         self.left = 0;
         self.goal = None;
+        self.history.clear();
+        self.step = None;
     }
 
     /// The cursor to the very start, the view with it (a loaded text reads
@@ -104,7 +124,7 @@ impl Editor {
         self.col = 0;
         self.top = 0;
         self.left = 0;
-        self.goal = None;
+        self.moved();
     }
 
     pub fn text(&self) -> String {
@@ -148,38 +168,87 @@ impl Editor {
         }
     }
 
+    /// Before an edit: a snapshot, unless it continues the step in
+    /// progress.
+    fn record(&mut self, step: Step) {
+        if step == Step::Other || self.step != Some(step) {
+            self.history.push((self.lines.clone(), self.row, self.col));
+            if self.history.len() > HISTORY {
+                self.history.remove(0);
+            }
+        }
+        self.step = Some(step);
+        self.goal = None;
+    }
+
+    /// The last step taken back; whether there was one.
+    pub fn undo(&mut self) -> bool {
+        let Some((lines, row, col)) = self.history.pop() else {
+            return false;
+        };
+        (self.lines, self.row, self.col) = (lines, row, col);
+        self.step = None;
+        self.goal = None;
+        true
+    }
+
+    /// A move ends the step in progress.
+    fn moved(&mut self) {
+        self.step = None;
+        self.goal = None;
+    }
+
+    fn put(&mut self, c: char) {
+        let c = if c == '\t' { ' ' } else { c };
+        self.lines[self.row].insert(self.col, c);
+        self.col += 1;
+    }
+
     pub fn insert_char(&mut self, c: char) {
         if c == '\n' {
             return self.newline();
         }
-        let c = if c == '\t' { ' ' } else { c };
-        self.lines[self.row].insert(self.col, c);
-        self.col += 1;
-        self.goal = None;
+        self.record(Step::Type);
+        self.put(c);
+        if c == ' ' {
+            // A word typed is a step.
+            self.step = None;
+        }
     }
 
+    /// A paste: one step, however long.
     pub fn insert_str(&mut self, s: &str) {
+        self.record(Step::Other);
         for c in s.replace("\r\n", "\n").chars() {
-            if c == '\n' && self.single_line {
-                self.insert_char(' ');
-            } else {
-                self.insert_char(c);
+            match c {
+                '\n' if self.single_line => self.put(' '),
+                '\n' => self.split(),
+                c => self.put(c),
             }
         }
+        self.step = None;
     }
 
     pub fn newline(&mut self) {
         if self.single_line {
             return;
         }
+        self.record(Step::Other);
+        self.split();
+    }
+
+    fn split(&mut self) {
         let rest = self.lines[self.row].split_off(self.col);
         self.lines.insert(self.row + 1, rest);
         self.row += 1;
         self.col = 0;
-        self.goal = None;
     }
 
     pub fn backspace(&mut self) {
+        if self.col == 0 && self.row == 0 {
+            return;
+        }
+        self.record(Step::Erase);
         if self.col > 0 {
             self.col -= 1;
             self.lines[self.row].remove(self.col);
@@ -189,17 +258,98 @@ impl Editor {
             self.col = self.lines[self.row].len();
             self.lines[self.row].extend(line);
         }
-        self.goal = None;
     }
 
     pub fn delete(&mut self) {
+        if self.col == self.lines[self.row].len() && self.row + 1 == self.lines.len() {
+            return;
+        }
+        self.record(Step::Erase);
         if self.col < self.lines[self.row].len() {
             self.lines[self.row].remove(self.col);
         } else if self.row + 1 < self.lines.len() {
             let next = self.lines.remove(self.row + 1);
             self.lines[self.row].extend(next);
         }
-        self.goal = None;
+    }
+
+    /// Where the word before the cursor starts: back over spaces, then
+    /// over the word.
+    fn word_start(&self) -> usize {
+        let l = &self.lines[self.row];
+        let mut c = self.col;
+        while c > 0 && l[c - 1] == ' ' {
+            c -= 1;
+        }
+        while c > 0 && l[c - 1] != ' ' {
+            c -= 1;
+        }
+        c
+    }
+
+    /// To the start of this word or the one before (the line before's end
+    /// from a line's start).
+    pub fn word_left(&mut self) {
+        if self.col == 0 {
+            return self.left();
+        }
+        self.col = self.word_start();
+        self.moved();
+    }
+
+    /// Past the end of this word or the next.
+    pub fn word_right(&mut self) {
+        let l = &self.lines[self.row];
+        if self.col == l.len() {
+            return self.right();
+        }
+        let mut c = self.col;
+        while c < l.len() && l[c] == ' ' {
+            c += 1;
+        }
+        while c < l.len() && l[c] != ' ' {
+            c += 1;
+        }
+        self.col = c;
+        self.moved();
+    }
+
+    /// The word before the cursor erased (at a line's start, the line
+    /// joined to the one before).
+    pub fn delete_word_back(&mut self) {
+        if self.col == 0 {
+            return self.backspace();
+        }
+        self.record(Step::Other);
+        let s = self.word_start();
+        self.lines[self.row].drain(s..self.col);
+        self.col = s;
+    }
+
+    /// The rest of the line erased (at its end, the next line joined).
+    pub fn kill_to_end(&mut self) {
+        if self.col == self.lines[self.row].len() {
+            return self.delete();
+        }
+        self.record(Step::Other);
+        self.lines[self.row].truncate(self.col);
+    }
+
+    /// The line before the cursor erased.
+    pub fn kill_to_start(&mut self) {
+        if self.col == 0 {
+            return;
+        }
+        self.record(Step::Other);
+        self.lines[self.row].drain(..self.col);
+        self.col = 0;
+    }
+
+    /// The cursor to the very end of the text.
+    pub fn to_end(&mut self) {
+        self.row = self.lines.len() - 1;
+        self.col = self.lines[self.row].len();
+        self.moved();
     }
 
     pub fn left(&mut self) {
@@ -209,7 +359,7 @@ impl Editor {
             self.row -= 1;
             self.col = self.lines[self.row].len();
         }
-        self.goal = None;
+        self.moved();
     }
 
     pub fn right(&mut self) {
@@ -219,7 +369,7 @@ impl Editor {
             self.row += 1;
             self.col = 0;
         }
-        self.goal = None;
+        self.moved();
     }
 
     pub fn up(&mut self) {
@@ -234,6 +384,7 @@ impl Editor {
     /// the width), else a line. The column aimed for is kept across a run
     /// of these, so passing a short row does not pull the cursor left.
     fn vertical(&mut self, by: isize) {
+        self.step = None;
         if self.wraps() && self.width > 0 {
             let rows = self.rows(self.width);
             let (i, c) = locate(&rows, self.row, self.col);
@@ -264,12 +415,12 @@ impl Editor {
 
     pub fn home(&mut self) {
         self.col = 0;
-        self.goal = None;
+        self.moved();
     }
 
     pub fn end(&mut self) {
         self.col = self.lines[self.row].len();
-        self.goal = None;
+        self.moved();
     }
 
     pub fn page(&mut self, rows: isize) {
@@ -423,5 +574,48 @@ mod tests {
         e.up();
         e.up();
         assert_eq!(e.cursor(), (0, 8));
+    }
+
+    #[test]
+    fn words_move_and_erase_like_readline() {
+        let mut e = Editor::with_text("one  two three", false);
+        e.word_left();
+        assert_eq!(e.cursor(), (0, 9));
+        e.word_left();
+        assert_eq!(e.cursor(), (0, 5));
+        e.word_right();
+        assert_eq!(e.cursor(), (0, 8));
+        e.delete_word_back();
+        assert_eq!(e.text(), "one   three");
+        e.kill_to_end();
+        assert_eq!(e.text(), "one  ");
+        e.kill_to_start();
+        assert_eq!((e.text().as_str(), e.cursor()), ("", (0, 0)));
+    }
+
+    #[test]
+    fn undo_takes_back_a_word_a_run_of_erasing_or_a_paste_at_a_time() {
+        let mut e = Editor::new(false);
+        for c in "hello world".chars() {
+            e.insert_char(c);
+        }
+        e.backspace();
+        e.backspace();
+        assert_eq!(e.text(), "hello wor");
+        e.undo(); // the two backspaces
+        assert_eq!(e.text(), "hello world");
+        e.undo(); // "world"
+        assert_eq!(e.text(), "hello ");
+        e.insert_str("pasted\ntext");
+        e.kill_to_start();
+        assert_eq!(e.text(), "hello pasted\n");
+        e.undo();
+        e.undo(); // the paste
+        assert_eq!(e.text(), "hello ");
+        e.undo();
+        assert_eq!(e.text(), "");
+        assert!(!e.undo());
+        e.set_text("loaded");
+        assert!(!e.undo(), "loading starts a fresh history");
     }
 }
