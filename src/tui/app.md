@@ -79,7 +79,12 @@ of each card's memory until then.
   last line of the server's own log (`phi::serve_log`), read from its
   tail every half second, a line rewritten with `\r` as its latest text,
   and only once the log is newer than the start (before that it is the
-  previous run's).
+  previous run's). "The start" is when the job began, less a second: xks
+  writes its first lines before the TUI reads the message that a start
+  is under way, and a file's time comes from the kernel's coarse clock,
+  a few milliseconds behind; both hid the line until a test and a live
+  35B start caught them. xks says `loading NAME (N GB)` before the load,
+  the line a start mostly shows.
 - **Paths:** the file prompt takes `~/` for the home directory, and `Tab`
   completes as far as the matching entries agree (a directory gets its
   `/`), listing them when more than one matches; hidden entries only

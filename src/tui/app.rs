@@ -351,6 +351,9 @@ pub struct App {
     /// Since when the server's log is progress (a log older than the
     /// start is the previous run's).
     watch_since: Option<SystemTime>,
+    /// When the running job began, by the wall clock: a start's log is
+    /// progress when it is newer than this.
+    job_wall: SystemTime,
     /// A first `Ctrl+Q` while a job runs, waiting for the second.
     quit_armed: Option<Instant>,
     /// A first `n` (a new, empty draft), waiting for the second.
@@ -446,6 +449,7 @@ impl App {
             previous: None,
             progress: None,
             watch_since: None,
+            job_wall: SystemTime::UNIX_EPOCH,
             quit_armed: None,
             clear_armed: None,
             draft_file: None,
@@ -914,11 +918,24 @@ impl App {
     /// Watch the server's log for progress (a start), or stop watching.
     fn watch(&mut self, on: bool) {
         if on && self.watch_since.is_none() {
-            self.watch_since = Some(SystemTime::now());
+            // The job's own start, not now: xks writes its first lines
+            // within milliseconds, before this message is read (up to a
+            // poll later), and a guard from now would call them stale. A
+            // second's slack more: a file's time comes from the kernel's
+            // coarse clock, a few milliseconds behind the wall clock read
+            // here, while a previous run's log is minutes old.
+            let slack = Duration::from_secs(1);
+            self.watch_since = Some(self.job_wall.checked_sub(slack).unwrap_or(self.job_wall));
         } else if !on {
             self.watch_since = None;
             self.progress = None;
         }
+    }
+
+    /// A job begun: what it is doing, and when (both clocks).
+    fn begin(&mut self, job: Job, what: &str) {
+        self.job = Some((job, what.into(), Instant::now()));
+        self.job_wall = SystemTime::now();
     }
 
     fn end_job(&mut self) {
@@ -1079,7 +1096,7 @@ impl App {
             Err(e) => return self.fail(e),
         };
         let (client, local) = (self.client.clone(), self.bind.is_some());
-        self.job = Some((Job::Asking, "asking".into(), Instant::now()));
+        self.begin(Job::Asking, "asking");
         self.save_draft();
         self.spawn(move |tx| {
             if local && !client.healthy() {
@@ -1118,11 +1135,10 @@ impl App {
             return;
         }
         let client = self.client.clone();
-        self.job = Some((
+        self.begin(
             Job::Starting,
-            "starting intel phi jev (loads the model, a minute or so)".into(),
-            Instant::now(),
-        ));
+            "starting intel phi jev (loads the model, a minute or so)",
+        );
         self.watch(true);
         self.spawn(move |_| {
             if client.healthy() {
@@ -1142,11 +1158,7 @@ impl App {
         if self.busy() {
             return;
         }
-        self.job = Some((
-            Job::Stopping,
-            "stopping the server, releasing the cards".into(),
-            Instant::now(),
-        ));
+        self.begin(Job::Stopping, "stopping the server, releasing the cards");
         self.spawn(|_| Msg::Stopped(phi::stop_as(Say::Log)));
     }
 
@@ -1670,6 +1682,23 @@ mod tests {
         c.keep_if_changed().unwrap();
         assert_eq!(std::fs::read_to_string(&kept).unwrap(), written);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_log_written_before_the_phase_arrives_is_still_progress() {
+        let p = std::env::temp_dir().join(format!("mjev-race-{}.log", std::process::id()));
+        let mut a = app();
+        a.begin(Job::Asking, "asking");
+        // xks writes at once; the TUI reads the phase message a poll later.
+        std::fs::write(&p, "xks: loading subject.gguf (21.7 GB)\n").unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+        a.watch(true);
+        let since = a.watch_since.unwrap();
+        assert_eq!(
+            last_line(&p, since).as_deref(),
+            Some("xks: loading subject.gguf (21.7 GB)")
+        );
+        std::fs::remove_file(&p).unwrap();
     }
 
     /// Every screen at every size: rows inside the width, the cursor on
