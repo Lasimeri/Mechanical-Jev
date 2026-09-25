@@ -50,8 +50,8 @@ sections are the same in every repository of the family (see
   ([`src/phi.md`](src/phi.md)). Nothing of a sibling is copied into
   another.
 - What this repository consumes from Intel-Phi-Jev: `xks serve --detach
-  --bind`, `xks stop`, `/health`, `/v1/models` and the System One wire
-  format.
+  --bind`, `xks stop`, `target/release/xks` (where a checkout's binary is
+  looked for), `/health`, `/v1/models` and the System One wire format.
 
 ## Git
 

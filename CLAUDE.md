@@ -3,7 +3,7 @@
 Read `CONTRIBUTING.md` first; it is the authority. The non-obvious rules:
 
 - What this is: the asking side of Jev (TypeSafe System One) in Rust:
-  protocol, client, confidence, eval, corroborate, the `mjev` CLI, and
+  protocol, client, confidence, eval, corroborate, evidence, the `mjev` CLI and its TUI, and
   Jev reverse engineered from its documentation (`docs/reverse-engineering.md`).
   No inference. The server is Intel-Phi-Jev's `xks`, started on demand and
   found by `MJEV_XKS`, `xks` on PATH, a checkout next to this one or in
@@ -17,6 +17,9 @@ Read `CONTRIBUTING.md` first; it is the authority. The non-obvious rules:
   engineering uses the published documentation only: never call Jev or any
   other API for it.
 - Rust only. No Python or JavaScript, ever.
+- The TUI (`src/tui/`, `docs/tui.md`) uses `crossterm` alone: no widget
+  library, ratatui included, by the user's direction. Its look is
+  seaof.glass's palette (`src/tui/term.rs`, `theme`).
 - Sibling `.md` per code file, same change. No em or en dashes anywhere.
 - The server needs no key; a key, if ever set, lives in `mjev.local.conf`
   (ignored) and is never printed.
