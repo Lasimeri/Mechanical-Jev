@@ -95,9 +95,15 @@ pub struct Tempered {
     pub kind: String,
     pub questions: usize,
     pub temperature: f64,
+    /// The fit landed on the grid's lowest temperature: the best one is at
+    /// most this, not this.
+    pub at_floor: bool,
     pub mean_prob_diff_before: f64,
     pub mean_prob_diff_after: f64,
 }
+
+/// The lowest temperature `fit_temperature` tries.
+pub const TEMPER_MIN: f64 = 0.05;
 
 pub fn fit_temperature(a: &[Row], b: &[Row]) -> Vec<Tempered> {
     let key = |r: &Row| (r.case_index, r.id.clone());
@@ -124,10 +130,11 @@ pub fn fit_temperature(a: &[Row], b: &[Row]) -> Vec<Tempered> {
     by_kind
         .into_iter()
         .map(|(kind, pairs)| {
-            // 0.2 to about 20 in 8 percent steps, and 1.0 itself: a run already
-            // closest untempered must be able to say so.
-            let grid = (0..=60)
-                .map(|i| 0.2 * 1.08f64.powi(i))
+            // 0.05 to about 24 in 8 percent steps, and 1.0 itself: a run already
+            // closest untempered must be able to say so. (From 0.2 until
+            // 2026-09-25, when Jev's Scores fitted at 0.2 exactly: the floor.)
+            let grid = (0..=80)
+                .map(|i| TEMPER_MIN * 1.08f64.powi(i))
                 .chain(std::iter::once(1.0));
             let (t, d) = grid
                 .map(|t| (t, diff(&pairs, t)))
@@ -137,6 +144,7 @@ pub fn fit_temperature(a: &[Row], b: &[Row]) -> Vec<Tempered> {
                 kind,
                 questions: pairs.len(),
                 temperature: (t * 100.0).round() / 100.0,
+                at_floor: t <= TEMPER_MIN,
                 mean_prob_diff_before: diff(&pairs, 1.0),
                 mean_prob_diff_after: d,
             }

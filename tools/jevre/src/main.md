@@ -25,7 +25,11 @@ rather than panicking (before 2026-09-24 a fresh checkout's
   question's JSON plus a wrapper by type, for every tokenizer and
   serialization; best fits first.
 - `output`: the published `output_tokens` against each response's structure,
-  and an additive fit.
+  and an additive fit; then against the token count of text the response
+  carries (the answers as compact or pretty JSON, without legends or
+  types, the probability objects, the answer values, the option keys),
+  `a + b * tokens` per tokenizer, best first. None comes near the
+  structural fit (18.5 tokens rms at best, 1.84 for structure).
 - `probs`: TypeSafe's confidence formulas against every published answer,
   and for sample counts N whether counts k out of N could round to every
   published number (probabilities, confidence, a Score's expected level).

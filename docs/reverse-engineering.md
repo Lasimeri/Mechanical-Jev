@@ -17,6 +17,8 @@ latency and cost. The pairs are in
 with its source page. Nine public tokenizers (the o200k family of GPT-4o and
 gpt-oss, cl100k, Llama 3, Phi-4, Qwen3, Gemma 3, Mistral, DeepSeek V3) count
 the text of each request.
+How the archive is kept, and whose example it follows:
+[`evidence/README.md`](../evidence/README.md).
 
 ## Findings
 
@@ -33,7 +35,7 @@ the text of each request.
 | 9 | The model is a **small transformer**: about 3 to 10 B active parameters | about 11,100 state tokens read in at most 0.21 s including the network (53,000 tokens a second or more per request); $0.042 per million tokens; "transformer based" (press) | medium |
 | 10 | The tokenizer is most likely the **o200k family** (GPT-4o, gpt-oss) | best fit (2.04 rms) ahead of cl100k and Llama 3 (2.40): a preference, not a proof | low |
 | 11 | Trained with **RLCD**: a pretrained transformer post-trained with a reward that scores its probability distribution against outcomes (a proper scoring rule), on synthetic data | TypeSafe's AI primer and press; the scoring rule is the only reward that makes "probability 0.8 is right 80 percent of the time" the optimum | medium (the mechanism is inferred, the aim is stated) |
-| 12 | `output_tokens` grows with Choice options (about 8 per option) and Nouls (about 18 each) but is not an additive function of structure (three Scores cost less than their parts) | the published counts | unexplained; they are not billed |
+| 12 | `output_tokens` grows with Choice options (about 8 per option) and Nouls (about 18 each) but is not an additive function of structure (three Scores cost less than their parts); it is not the length of anything the response carries | the published counts; against the token count of the answers as compact or pretty JSON, without legends or types, the probability objects, the answer values, or the option keys, under all nine tokenizers, the best two-constant fit is 18.5 tokens rms against 1.84 for structure (`jevre output`) | unexplained, one hypothesis ruled out; they are not billed |
 
 A candidate that fits every finding: an open-weight mixture of experts
 with about 3.6 B active parameters and the o200k tokenizer (gpt-oss-20b is
@@ -104,6 +106,7 @@ jaggedness page give 28 questions; the gold is Jev's own answer.
 | lettered options, alphabetical order | 26 of 28 | 0.159 |
 | lettered options, the docs' order | 27 of 28 | 0.120 |
 | lettered options, the docs' order, averaged over 3 option rotations | **28 of 28** | **0.113** |
+| the same, re-run 2026-09-25 on Intel Phi Jev 82439bb (the session cut at the state, escaped labels) | **28 of 28** | 0.120 |
 | the reconstructed layout (question JSON, answered with the key) | 16 to 17 of 28 | 0.30 |
 
 What that refines:
@@ -118,9 +121,11 @@ What that refines:
   docs' option order and averaging three rotations of it takes the local
   subject from 26 to all 28 of Jev's decisions.
 - **Jev reads sharper.** The temperature that brings the local
-  probabilities closest to Jev's is about 0.3 for Score and 0.7 for Choice
-  and Noul (lower is sharper): Jev commits harder than the local subject,
-  most of all on Scores. Eleven or fewer questions per kind: indicative.
+  probabilities closest to Jev's is about 0.2 for Score and 0.6 for Choice
+  and Noul (lower is sharper; 0.20, 0.63 and 0.63 on the run below, the
+  Score an interior minimum of a grid reaching down to 0.05): Jev commits
+  harder than the local subject, most of all on Scores. Eleven or fewer
+  questions per kind: indicative.
 - **Finding 6 measured.** Jev's Noul reads 0.22 where its yes/no Choice
   reads 0.01 on the same question, and a Noul and its negation sum to 1.19.
   The local subject, whose Noul is a two-option Choice, reads 0.03 and

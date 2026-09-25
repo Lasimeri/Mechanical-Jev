@@ -236,6 +236,107 @@ fn output() {
             .collect::<Vec<_>>()
             .join(" ")
     );
+    serialized(&ps);
+}
+
+/// Is `output_tokens` the token count of something the server writes?
+/// Each candidate text per response, counted by each tokenizer, fitted as
+/// `a + b * tokens` (two constants, where the additive fit has six), best
+/// first. A text the count tracks exactly would fit with b near 1 and
+/// residuals near 0.
+fn serialized(ps: &[Pair]) {
+    // The candidate texts: functions of one response's answers object.
+    type Text = fn(&Value) -> String;
+    fn without(a: &Value, drop: &[&str]) -> Value {
+        let mut out = serde_json::Map::new();
+        for (id, ans) in a.as_object().into_iter().flatten() {
+            let mut o = ans.as_object().cloned().unwrap_or_default();
+            for k in drop {
+                o.remove(*k);
+            }
+            out.insert(id.clone(), Value::Object(o));
+        }
+        Value::Object(out)
+    }
+    let texts: [(&str, Text); 7] = [
+        ("answers, compact JSON", |a| a.to_string()),
+        ("answers, pretty JSON", |a| {
+            serde_json::to_string_pretty(a).unwrap_or_default()
+        }),
+        ("answers without legend", |a| {
+            without(a, &["legend"]).to_string()
+        }),
+        ("answers without legend or type", |a| {
+            without(a, &["legend", "type"]).to_string()
+        }),
+        ("probabilities objects only", |a| {
+            a.as_object()
+                .into_iter()
+                .flatten()
+                .map(|(_, v)| {
+                    v.get("probabilities")
+                        .map(Value::to_string)
+                        .unwrap_or_default()
+                })
+                .collect::<Vec<_>>()
+                .join("")
+        }),
+        ("each answer's value (noul, choice, score)", |a| {
+            a.as_object()
+                .into_iter()
+                .flatten()
+                .map(|(_, v)| {
+                    ["noul", "choice", "score"]
+                        .iter()
+                        .filter_map(|k| v.get(*k))
+                        .map(Value::to_string)
+                        .collect::<String>()
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }),
+        ("option and level keys", |a| {
+            a.as_object()
+                .into_iter()
+                .flatten()
+                .flat_map(|(_, v)| {
+                    v.get("probabilities")
+                        .and_then(Value::as_object)
+                        .map(|m| m.keys().cloned().collect::<Vec<_>>())
+                        .unwrap_or_default()
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }),
+    ];
+    let toks = tokenizers();
+    let mut fits = Vec::new();
+    for (tn, t) in &toks {
+        for (hn, h) in &texts {
+            let x: Vec<Vec<f64>> = ps
+                .iter()
+                .map(|p| vec![1.0, count(t, &h(&p.resp["answers"]))])
+                .collect();
+            let y: Vec<f64> = ps.iter().map(|p| p.output).collect();
+            let (b, res, rms) = fit(&x, &y);
+            fits.push((rms, tn.clone(), hn.to_string(), b, res));
+        }
+    }
+    fits.sort_by(|a, b| a.0.total_cmp(&b.0));
+    println!(
+        "\noutput_tokens against token counts of serialized text, a + b * tokens, best first:"
+    );
+    for (rms, tn, hn, b, res) in fits.iter().take(8) {
+        println!(
+            "  {tn:<10} {hn:<42} a {:>6.1} b {:>5.2} rms {rms:>5.2}  residuals {}",
+            b[0],
+            b[1],
+            res.iter()
+                .map(|r| format!("{r:+.0}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
+    }
 }
 
 fn choice_conf(p: &[f64]) -> f64 {
