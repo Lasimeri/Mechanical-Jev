@@ -25,6 +25,8 @@ make query          # starts Intel Phi Jev if it is down, asks examples/query.js
 make eval           # the long real sessions, scored
 make closeness      # Jev's published questions asked locally, compared with Jev's answers
 make stop           # stop the server, release the cards
+make tokenizers     # once: the nine pinned tokenizer.json files the fits read (sha256-checked)
+make evidence       # the reverse engineering's fits, offline
 make check          # docs, format, lint, build, tests
 ```
 
