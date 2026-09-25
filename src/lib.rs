@@ -26,3 +26,4 @@ pub mod evidence;
 pub mod phi;
 pub mod protocol;
 pub mod reconstruction;
+pub mod tui;
