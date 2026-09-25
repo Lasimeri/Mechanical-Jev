@@ -59,11 +59,16 @@ of each card's memory until then.
   atomically (a temporary file, then a rename) on each saved question,
   each ask and on quitting; restored when `mjev tui` opens without
   `--file`. The tests keep it nowhere (`draft_file` is `None`).
-- **Undo:** `u` puts the last deleted question back where it was. `n`
-  twice (within 3 s) starts a new, empty draft; `Ctrl+Q` twice quits
+- **Undo:** `u` puts the draft back as it was before the last delete,
+  move (`Alt+↑` `↓`), saved question, load or clear, up to 50 back, with
+  the example it came from; the answers stay and show as changed where
+  they no longer fit. So loading an example over a draft loses nothing.
+  `n` twice (within 3 s) starts a new, empty draft, the focus left on
+  the questions so the offered `u` works; `Ctrl+Q` twice quits
   while a job runs (a start carries on without the TUI).
 - **The answer:** `r` writes the last response as JSON, as `w` writes
-  the request.
+  the request. The answer before it is kept (`previous_for`), so a
+  re-asked question shows what each probability was.
 - **Messages:** an info message clears after 8 s; an error stays until
   the next message.
 - **A start's progress:** while a start runs, the status row shows the

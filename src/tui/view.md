@@ -16,7 +16,9 @@ lowercase. Nothing here changes what the app holds but scroll positions.
   (visible without colour too), a label, a bar (`█` for the probability, `─` for the rest;
   copper for the chosen option, the dimmer accent for the others), the
   value, and Jev's number as a note; one label column for every answer,
-  so all the bars start together. A Score's expected level is a line of
+  so all the bars start together. After a re-ask, a probability that moved
+by 0.01 or more carries "was" and its value before (`with_was`): how an
+edit to the instructions or the state changed the reading. A Score's expected level is a line of
   its own with no bar. The selected question's rows are kept in view.
 - **form**: kind, id, instructions, options, the focused field marked `›`;
   the options' hint follows the kind.

@@ -295,7 +295,7 @@ fn question_rows(a: &App, w: usize) -> Vec<(Vec<Span>, bool, usize)> {
         .map(|(i, q)| {
             let jev = a.jev_for(i);
             match a.answer_for(i) {
-                Some((v, true)) => (None, answer_lines(q, v, jev)),
+                Some((v, true)) => (None, with_was(answer_lines(q, v, jev), a, i)),
                 Some((v, false)) => (Some("changed since it was asked"), answer_lines(q, v, None)),
                 None => match jev {
                     Some(j) => (
@@ -340,6 +340,26 @@ fn question_rows(a: &App, w: usize) -> Vec<(Vec<Span>, bool, usize)> {
         );
     }
     rows
+}
+
+/// Where a probability moved by 0.01 or more since the answer before, a
+/// note saying what it was: how an edit to the instructions or the state
+/// changed the reading.
+fn with_was(mut lines: Vec<Line>, a: &App, i: usize) -> Vec<Line> {
+    let (Some(q), Some(pv)) = (a.questions.get(i), a.previous_for(i)) else {
+        return lines;
+    };
+    let before = answer_lines(q, pv, None);
+    for l in &mut lines {
+        let was = before.iter().find(|b| b.label == l.label).and_then(|b| b.p);
+        if let (Some(p), Some(w)) = (l.p, was) {
+            if (p - w).abs() >= 0.01 {
+                let sep = if l.note.is_empty() { "" } else { "  " };
+                l.note = format!("{}{sep}was {w:.2}", l.note);
+            }
+        }
+    }
+    lines
 }
 
 /// Answer lines as rows: a `•` on the chosen option (visible without
@@ -423,7 +443,12 @@ fn ask(f: &mut Frame, a: &mut App) {
             list_top as u16,
             vec![
                 pad(2),
-                dim("no questions yet: tab here, then a adds one").italic(),
+                dim(if a.focus == Focus::Questions {
+                    "no questions yet: a adds one"
+                } else {
+                    "no questions yet: tab here, then a adds one"
+                })
+                .italic(),
             ],
             theme::BG,
         );
@@ -454,7 +479,7 @@ fn ask(f: &mut Frame, a: &mut App) {
             ("l", "load"),
             ("w", "write"),
             ("r", "write the answer"),
-            ("u", "undo delete"),
+            ("u", "undo"),
             ("n", "new draft"),
             ("esc", "home"),
         ],
@@ -776,7 +801,16 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("ask, questions", "a  enter or e  d", "add, edit, delete"),
     ("ask, questions", "l  w", "load or write a request file"),
     ("ask, questions", "r", "write the last answer to a file"),
-    ("ask, questions", "u  n n", "undo a delete; a new draft"),
+    (
+        "ask, questions",
+        "u",
+        "undo a delete, move, save, load or clear",
+    ),
+    (
+        "ask, questions",
+        "n n  alt+↑ ↓",
+        "a new draft; move a question",
+    ),
     ("ask, questions", "x", "examples"),
     ("form", "tab, shift+tab", "next, previous field"),
     ("form", "← →, or n c s", "the kind: noul, choice, score"),

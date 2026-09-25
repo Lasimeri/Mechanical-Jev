@@ -66,8 +66,9 @@ writing JSON:
    the line its log is on.
 6. On the questions: `l` and `w` load and write request files (which
    `mjev query --file` takes too; `Tab` completes the path), `r` writes
-   the last answer, `u` brings back a deleted question, `n` twice starts
-   a new draft.
+   the last answer, `u` undoes a delete, move, save, load or clear,
+   `Alt+↑` `↓` moves a question, `n` twice starts a new draft. Re-asked,
+   each probability that moved says what it was.
 
 The draft is kept between runs (`$XDG_STATE_HOME/mjev/draft.json`, else
 `~/.local/state/mjev/draft.json`), a question that does not validate yet

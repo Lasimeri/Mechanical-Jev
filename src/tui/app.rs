@@ -261,6 +261,16 @@ pub fn examples() -> Vec<Example> {
         .collect()
 }
 
+/// A draft as it was, for `u`.
+pub struct Past {
+    pub draft: Draft,
+    pub loaded: Option<Example>,
+    pub q_sel: usize,
+}
+
+/// How many drafts back `u` goes.
+const PAST: usize = 50;
+
 /// The last answer, with what was asked.
 pub struct Asked {
     pub request: Request,
@@ -329,8 +339,11 @@ pub struct App {
     pub status: Option<(String, bool)>,
     /// When it was set: an info message clears after `INFO_FOR`.
     status_at: Option<Instant>,
-    /// The last question deleted, and where it was, for `u`.
-    pub deleted: Option<(usize, QDraft)>,
+    /// The drafts before each delete, move, save, load and clear, newest
+    /// last, for `u`.
+    pub past: Vec<Past>,
+    /// The answer before the last one, for how a change moved it.
+    pub previous: Option<Asked>,
     /// The starting server's latest log line, while a job starts it.
     pub progress: Option<String>,
     /// Since when the server's log is progress (a log older than the
@@ -424,7 +437,8 @@ impl App {
             health_pending: false,
             last_health: None,
             status_at: None,
-            deleted: None,
+            past: Vec::new(),
+            previous: None,
             progress: None,
             watch_since: None,
             quit_armed: None,
@@ -602,7 +616,12 @@ impl App {
             return;
         }
         let n = self.questions.len();
+        let moving = k
+            .modifiers
+            .intersects(KeyModifiers::ALT | KeyModifiers::SHIFT);
         match k.code {
+            KeyCode::Up if moving && self.q_sel > 0 => self.move_question(-1),
+            KeyCode::Down if moving && self.q_sel + 1 < n => self.move_question(1),
             KeyCode::Up => self.q_sel = self.q_sel.saturating_sub(1),
             KeyCode::Down => self.q_sel = (self.q_sel + 1).min(n.saturating_sub(1)),
             KeyCode::Char('a') => self.open_form(None),
@@ -610,10 +629,11 @@ impl App {
             KeyCode::Char('n') => self.clear(),
             KeyCode::Enter | KeyCode::Char('e') if n > 0 => self.open_form(Some(self.q_sel)),
             KeyCode::Char('d') if n > 0 => {
+                self.remember();
                 let q = self.questions.remove(self.q_sel);
                 self.info(format!("deleted {}; u brings it back", q.id));
-                self.deleted = Some((self.q_sel, q));
                 self.q_sel = self.q_sel.min(self.questions.len().saturating_sub(1));
+                self.save_draft();
             }
             KeyCode::Char('l') => self.ask_path(PromptFor::Load),
             KeyCode::Char('w') => self.ask_path(PromptFor::Write),
@@ -696,6 +716,7 @@ impl App {
             return self.fail(format!("id `{}` is taken", q.id));
         }
         let id = q.id.clone();
+        self.remember();
         match editing {
             Some(i) => self.questions[i] = q,
             None => {
@@ -726,11 +747,16 @@ impl App {
         let ex = self.examples[i].clone();
         match Draft::from_request(&ex.request) {
             Ok(d) => {
+                let had = self.remember();
                 self.set_draft(d);
                 self.loaded = Some(ex);
                 self.focus = Focus::Questions;
                 self.screen = Screen::Ask;
-                self.info("loaded; f5 asks, jev's published answer shows beside ours");
+                self.info(if had {
+                    "loaded; f5 asks, jev's answer beside ours; u brings back your draft"
+                } else {
+                    "loaded; f5 asks, jev's published answer shows beside ours"
+                });
             }
             Err(e) => self.fail(e),
         }
@@ -743,7 +769,35 @@ impl App {
         self.q_sel = 0;
         self.q_top = 0;
         self.asked = None;
+        self.previous = None;
         self.loaded = None;
+    }
+
+    /// Keep the draft as it is for `u`, unless it is empty or already the
+    /// last kept; whether it was kept.
+    fn remember(&mut self) -> bool {
+        let draft = self.draft();
+        if draft.is_empty() || self.past.last().is_some_and(|p| p.draft == draft) {
+            return false;
+        }
+        self.past.push(Past {
+            draft,
+            loaded: self.loaded.clone(),
+            q_sel: self.q_sel,
+        });
+        if self.past.len() > PAST {
+            self.past.remove(0);
+        }
+        true
+    }
+
+    /// The selected question one place up (`by` -1) or down (1).
+    fn move_question(&mut self, by: isize) {
+        self.remember();
+        let to = self.q_sel.saturating_add_signed(by);
+        self.questions.swap(self.q_sel, to);
+        self.q_sel = to;
+        self.save_draft();
     }
 
     fn server_key(&mut self, k: KeyEvent) {
@@ -806,9 +860,15 @@ impl App {
             .and_then(|req| Draft::from_request(&req));
         match r {
             Ok(d) => {
+                let had = self.remember();
                 self.set_draft(d);
                 self.focus = Focus::Questions;
-                self.info(format!("loaded {}", p.display()));
+                let back = if had {
+                    "; u brings back your draft"
+                } else {
+                    ""
+                };
+                self.info(format!("loaded {}{back}", p.display()));
             }
             Err(e) => self.fail(e),
         }
@@ -864,27 +924,36 @@ impl App {
     fn clear(&mut self) {
         if self.clear_armed.is_some_and(|t| t.elapsed() < CONFIRM_FOR) {
             self.clear_armed = None;
+            self.remember();
             self.set_draft(Draft::default());
-            self.focus = Focus::State;
+            // Still on the questions, so the u the message offers works.
             self.save_draft();
-            self.info("a new draft");
+            self.info("a new draft: tab to write the state; u brings back the last one");
         } else {
             self.clear_armed = Some(Instant::now());
             self.fail("n again clears the state and every question");
         }
     }
 
-    /// The last question deleted, back where it was.
+    /// The draft as it was before the last delete, move, save, load or
+    /// clear; the answers stay (they show as changed where they no longer
+    /// fit).
     fn undo(&mut self) {
-        match self.deleted.take() {
-            Some((i, q)) => {
-                let i = i.min(self.questions.len());
-                self.info(format!("{} is back", q.id));
-                self.questions.insert(i, q);
-                self.q_sel = i;
-            }
-            None => self.fail("nothing deleted to bring back"),
-        }
+        let Some(p) = self.past.pop() else {
+            return self.fail("nothing to undo");
+        };
+        let (asked, previous) = (self.asked.take(), self.previous.take());
+        self.set_draft(p.draft);
+        (self.asked, self.previous, self.loaded) = (asked, previous, p.loaded);
+        self.q_sel = p.q_sel.min(self.questions.len().saturating_sub(1));
+        self.info("undone");
+        self.save_draft();
+    }
+
+    /// The answer before the last to question `i`, when there is one.
+    pub fn previous_for(&self, i: usize) -> Option<&Value> {
+        let id = &self.questions.get(i)?.id;
+        self.previous.as_ref()?.response.answers.get(id)
     }
 
     fn write_answer(&mut self, p: &Path) {
@@ -1121,7 +1190,7 @@ impl App {
                             a.response.model,
                             a.took.as_secs_f64()
                         ));
-                        self.asked = Some(*a);
+                        self.previous = self.asked.replace(*a);
                         self.last_health = None;
                     }
                     Err(e) => self.fail(e),
@@ -1445,6 +1514,72 @@ mod tests {
         assert_eq!(a.screen, Screen::Form);
         press(&mut a, KeyCode::Esc);
         assert_eq!((a.screen, a.questions.len()), (Screen::Ask, 0));
+    }
+
+    #[test]
+    fn u_brings_back_a_draft_a_load_or_a_clear_replaced() {
+        let mut a = app();
+        a.load_example(0);
+        let first = a.draft();
+        a.load_example(a.examples.len() - 1);
+        assert_ne!(a.draft(), first);
+        press(&mut a, KeyCode::Char('u'));
+        assert_eq!(a.draft(), first);
+        assert!(a.jev_for(0).is_some(), "with its example");
+        press(&mut a, KeyCode::Char('n'));
+        press(&mut a, KeyCode::Char('n'));
+        assert!(a.draft().is_empty());
+        press(&mut a, KeyCode::Char('u'));
+        assert_eq!(a.draft(), first);
+    }
+
+    #[test]
+    fn alt_arrows_move_a_question() {
+        let mut a = app();
+        let five = a
+            .examples
+            .iter()
+            .position(|e| e.request.questions.len() >= 3)
+            .unwrap();
+        a.load_example(five);
+        let ids = |a: &App| a.questions.iter().map(|q| q.id.clone()).collect::<Vec<_>>();
+        let before = ids(&a);
+        a.key(KeyEvent::new(KeyCode::Down, KeyModifiers::ALT));
+        assert_eq!(
+            (ids(&a)[0].clone(), ids(&a)[1].clone(), a.q_sel),
+            (before[1].clone(), before[0].clone(), 1)
+        );
+        press(&mut a, KeyCode::Char('u'));
+        assert_eq!(ids(&a), before);
+    }
+
+    #[test]
+    fn a_reasked_question_says_what_each_probability_was() {
+        let mut a = app();
+        a.load_example(2); // department: billing, technical, sales
+        let req = a.draft().to_request().unwrap();
+        let answer = |b: f64, t: f64| {
+            Asked {
+            request: req.clone(),
+            response: serde_json::from_value(serde_json::json!({
+                "model": "m",
+                "answers": {"department": {"type": "choice", "choice": "billing",
+                    "probabilities": {"billing": b, "technical": t, "sales": 0.0}, "confidence": 0.5}}
+            }))
+            .unwrap(),
+            took: Duration::from_millis(1),
+        }
+        };
+        a.previous = Some(answer(0.40, 0.60));
+        a.asked = Some(answer(0.70, 0.30));
+        a.screen = Screen::Ask;
+        let f = view::render(&mut a, 120, 30);
+        let all: String = (0..30).map(|r| f.row_text(r) + "\n").collect();
+        assert!(
+            all.contains("was 0.40") && all.contains("was 0.60"),
+            "{all}"
+        );
+        assert!(!all.contains("was 0.00"), "an unmoved one says nothing");
     }
 
     /// Every screen at every size: rows inside the width, the cursor on

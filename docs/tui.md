@@ -71,7 +71,7 @@ filled cells `█`, copper for the chosen option and `#7a5c38` (the site's
 | any text | `Ctrl` or `Alt` with `←` `→` (`Alt+B`, `Alt+F`); `Ctrl+Home`, `Ctrl+End` | a word left, right; the text's start, end |
 | ask, questions | `↑` `↓`; `a` add; `Enter` or `e` edit; `d` delete | the list |
 | ask, questions | `l` load a request file; `w` write one; `r` write the last answer; `x` examples | files |
-| ask, questions | `u` undo a delete; `n` twice, a new draft | the draft |
+| ask, questions | `u` undo a delete, move, save, load or clear (50 back); `n` twice, a new draft; `Alt+↑` `↓` (or `Shift`) move a question | the draft |
 | form | `Tab`, `Shift+Tab` | next, previous field |
 | form, on the kind | `←` `→` or space; `n` `c` `s` | noul, choice, score |
 | form | `Enter` on the kind or the id | next field |
