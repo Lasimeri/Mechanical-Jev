@@ -434,18 +434,22 @@ pub fn answer_lines(q: &QDraft, answer: &Value, jev: Option<&Value>) -> Vec<Line
                     )
                 })
                 .collect();
-            let js = match &theirs {
+            let (jc, js) = match &theirs {
                 Some(Answer::Score {
                     score: s,
                     confidence: c,
                     ..
-                }) => jev_note(format!("{s:.2}, {c:.2}")),
-                _ => String::new(),
+                }) => (format!("jev {c:.2}"), format!("  jev {s:.2}")),
+                _ => (String::new(), String::new()),
             };
+            out.push(line("confidence", Some(confidence), jc, false));
+            // The expected level, a number between levels rather than a
+            // probability: no bar.
+            let top = levels.len().saturating_sub(1);
             out.push(line(
-                &format!("score {score:.2}, confidence"),
-                Some(confidence),
-                js,
+                "score",
+                None,
+                format!("{score:.2} of 0 to {top}{js}"),
                 false,
             ));
             out

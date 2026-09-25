@@ -16,7 +16,8 @@ and a space right after a full row hangs there instead of starting the
 next row by itself. Up and down move by the rows as drawn (the width is
 the last view's), aiming for the same column across a run of them, so a
 short row passed on the way does not pull the cursor left. Home and end
-stay on the line, not the drawn row.
+stay on the line, not the drawn row. `rows_at(width)` is how many rows
+the text takes in a view that wide, which sizes the state's box.
 
 A single-line editor (a question's id, a file path) ignores newlines,
 turns a pasted one into a space, and scrolls sideways.

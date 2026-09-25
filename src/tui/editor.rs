@@ -139,6 +139,15 @@ impl Editor {
         out
     }
 
+    /// How many rows the text takes in a view `width` wide.
+    pub fn rows_at(&self, width: usize) -> usize {
+        if self.wraps() {
+            self.rows((width.max(2)) - 1).len()
+        } else {
+            self.lines.len()
+        }
+    }
+
     pub fn insert_char(&mut self, c: char) {
         if c == '\n' {
             return self.newline();

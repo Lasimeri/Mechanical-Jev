@@ -278,7 +278,6 @@ fn home(f: &mut Frame, a: &App) {
 /// The rows of the question list: spans, the colour under them, and the
 /// question they belong to.
 fn question_rows(a: &App, w: usize) -> Vec<(Vec<Span>, bool, usize)> {
-    let mut rows = Vec::new();
     let lit = a.focus == Focus::Questions;
     let idw = a
         .questions
@@ -287,7 +286,36 @@ fn question_rows(a: &App, w: usize) -> Vec<(Vec<Span>, bool, usize)> {
         .max()
         .unwrap_or(0)
         .clamp(4, 24);
-    for (i, q) in a.questions.iter().enumerate() {
+    // Each question's answer (ours, else Jev's published one) and what
+    // to say above it, first, so every bar starts in the same column.
+    let answers: Vec<(Option<&str>, Vec<Line>)> = a
+        .questions
+        .iter()
+        .enumerate()
+        .map(|(i, q)| {
+            let jev = a.jev_for(i);
+            match a.answer_for(i) {
+                Some((v, true)) => (None, answer_lines(q, v, jev)),
+                Some((v, false)) => (Some("changed since it was asked"), answer_lines(q, v, None)),
+                None => match jev {
+                    Some(j) => (
+                        Some("jev's published answer; f5 asks ours"),
+                        answer_lines(q, j, None),
+                    ),
+                    None => (None, Vec::new()),
+                },
+            }
+        })
+        .collect();
+    let lw = answers
+        .iter()
+        .flat_map(|(_, ls)| ls.iter().map(|l| chars(&l.label)))
+        .max()
+        .unwrap_or(0)
+        .clamp(6, 28);
+    let bw = w.saturating_sub(7 + lw + 1 + 6 + 10).clamp(6, 30);
+    let mut rows = Vec::new();
+    for (i, (q, (heading, lines))) in a.questions.iter().zip(answers).enumerate() {
         let sel = i == a.q_sel;
         rows.push((
             vec![
@@ -302,57 +330,42 @@ fn question_rows(a: &App, w: usize) -> Vec<(Vec<Span>, bool, usize)> {
             sel && lit,
             i,
         ));
-        let jev = a.jev_for(i);
-        let (answer, heading) = match a.answer_for(i) {
-            Some((v, true)) => (Some((v, jev)), None),
-            Some((v, false)) => (Some((v, None)), Some("changed since it was asked")),
-            None => match jev {
-                Some(j) => (
-                    Some((j, None)),
-                    Some("jev's published answer; f5 asks ours"),
-                ),
-                None => (None, None),
-            },
-        };
         if let Some(hd) = heading {
             rows.push((vec![pad(5), dim(hd).italic()], false, i));
         }
-        if let Some((v, jev)) = answer {
-            let lines = answer_lines(q, v, jev);
-            rows.extend(answer_rows(&lines, w).into_iter().map(|r| (r, false, i)));
-        }
+        rows.extend(
+            answer_rows(&lines, lw, bw)
+                .into_iter()
+                .map(|r| (r, false, i)),
+        );
     }
     rows
 }
 
-/// Answer lines as rows: label, bar, value, note.
-fn answer_rows(lines: &[Line], w: usize) -> Vec<Vec<Span>> {
-    let lw = lines
-        .iter()
-        .map(|l| chars(&l.label))
-        .max()
-        .unwrap_or(0)
-        .clamp(6, 28);
-    let bw = w.saturating_sub(5 + lw + 1 + 6 + 10).clamp(6, 30);
+/// Answer lines as rows: a `•` on the chosen option (visible without
+/// colour too), the label, the bar, the value, the note.
+fn answer_rows(lines: &[Line], lw: usize, bw: usize) -> Vec<Vec<Span>> {
     lines
         .iter()
         .map(|l| {
             let label = cell(&l.label, lw);
-            let mut r = vec![
-                pad(5),
-                if l.chosen {
-                    text(label).bold()
-                } else {
-                    dim(label)
-                },
-                pad(1),
-            ];
-            if let Some(p) = l.p {
-                r.extend(bar(p, bw, l.chosen));
-                r.push(text(format!(" {p:.2}")));
-            }
-            if !l.note.is_empty() {
-                r.push(dim(format!("  {}", l.note)));
+            let mut r = if l.chosen {
+                vec![pad(5), text("• "), text(label).bold()]
+            } else {
+                vec![pad(7), dim(label)]
+            };
+            r.push(pad(1));
+            match l.p {
+                Some(p) => {
+                    r.extend(bar(p, bw, l.chosen));
+                    r.push(text(format!(" {p:.2}")));
+                    if !l.note.is_empty() {
+                        r.push(dim(format!("  {}", l.note)));
+                    }
+                }
+                // A value that is not a probability (a Score's expected
+                // level): the text where the bar would be.
+                None => r.push(text(l.note.clone())),
             }
             r
         })
@@ -362,10 +375,13 @@ fn answer_rows(lines: &[Line], w: usize) -> Vec<Vec<Span>> {
 fn ask(f: &mut Frame, a: &mut App) {
     let (w, h) = (f.width as usize, f.height as usize);
     header(f, a, "ask");
-    let state_h = ((h.saturating_sub(6)) / 3).clamp(3, 10);
     let lit = a.focus == Focus::State;
     f.set(1, rule(1, "state", w.saturating_sub(2), lit), theme::BG);
     let ew = w.saturating_sub(4).max(1);
+    // As tall as the state (and a row to type on), within a third of the
+    // screen: a short state leaves the room to the answers.
+    let most = (h.saturating_sub(6) / 3).clamp(3, 10);
+    let state_h = (a.state.rows_at(ew) + 1).clamp(3, most);
     let shown = a.state.visible(ew, state_h);
     if a.state.is_empty() && !lit {
         f.set(
@@ -387,11 +403,8 @@ fn ask(f: &mut Frame, a: &mut App) {
     let top = 2 + state_h;
     let mut label = "questions".to_string();
     if let Some(asked) = &a.asked {
-        label = format!(
-            "questions · {} in {:.1} s",
-            asked.response.model,
-            asked.took.as_secs_f64()
-        );
+        // The header names the model; this says what the answer cost.
+        label = format!("questions · answered in {:.1} s", asked.took.as_secs_f64());
         let read = asked.response.usage.input_tokens;
         if read > 0 {
             label.push_str(&format!(" · {read} tokens read"));

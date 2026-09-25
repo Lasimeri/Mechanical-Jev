@@ -26,7 +26,8 @@ What the TUI shows: `answer_lines` turns one answer into lines of label,
 probability and note: a Noul's p(yes); each option of a Choice in the
 question's order, the chosen one marked, then the confidence; each level
 of a Score with its probability, the level nearest the expected score
-marked, then the score and its confidence. With Jev's published answer to
+marked, then its confidence and, with no bar (it is a level, not a
+probability), the expected score out of the top level. With Jev's published answer to
 the same question (an example from TypeSafe's documentation) each line
 carries Jev's number beside the local one. `filled` sizes a bar.
 

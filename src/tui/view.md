@@ -10,11 +10,14 @@ lowercase. Nothing here changes what the app holds but scroll positions.
   `/ help` `/ quit` with a dim description on the right and the selected
   row on the surface colour, then the server's address and state. When
   Intel Phi Jev is not built, how to build it (`phi::not_built`).
-- **ask**: the state's editor, then the questions, each with its answer
-  under it: a label, a bar (`█` for the probability, `─` for the rest;
+- **ask**: the state's editor (as tall as its text, within a third of
+  the screen, so a short state leaves the room to the answers), then the
+  questions, each with its answer under it: a `•` on the chosen option
+  (visible without colour too), a label, a bar (`█` for the probability, `─` for the rest;
   copper for the chosen option, the dimmer accent for the others), the
-  value, and Jev's number as a note. The selected question's rows are
-  kept in view.
+  value, and Jev's number as a note; one label column for every answer,
+  so all the bars start together. A Score's expected level is a line of
+  its own with no bar. The selected question's rows are kept in view.
 - **form**: kind, id, instructions, options, the focused field marked `›`;
   the options' hint follows the kind.
 - **examples**: TypeSafe's published requests, one row each (ids, kinds,
@@ -40,5 +43,5 @@ The form checks the question as it is typed, the way saving will ("ready:
 selected request in full under the list: where it is from, its note and
 each question with its kind and instructions. While a start runs, the
 status row shows the server log's latest line.
-After an answer the questions' rule says which model answered, how long
-it took and how many tokens the server read.
+After an answer the questions' rule says how long it took and how many
+tokens the server read (the header names the model).
