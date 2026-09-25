@@ -1,8 +1,9 @@
 # Mechanical Jev
 
-System One questions from Rust: a client library, the `mjev` command line
-and an evaluation harness. You send a **state** and typed **questions**;
-the answers come back typed, with probabilities, never as generated text:
+System One questions from Rust: a client library, the `mjev` command line,
+a terminal interface and an evaluation harness. You send a **state** and
+typed **questions**; the answers come back typed, with probabilities,
+never as generated text:
 
 | question | answer |
 | --- | --- |
@@ -36,6 +37,37 @@ cloned and built (`make build`) next to this checkout; see
 (`xks serve --detach`, which loads the model and puts the cards to work:
 about 45 s); after that a question takes seconds.
 
+## Use it
+
+```sh
+make tui            # or: ./target/release/mjev tui [--file request.json]
+```
+
+A terminal interface, themed after seaof.glass, for using Jev without
+writing JSON:
+
+1. **ask** (`a` on home): write the state (text, or a JSON object), `Tab`
+   to the questions, `a` to add one. The form takes the kind (`←` `→`:
+   noul, choice, score), an id, the instructions, and the options, one per
+   line (choice: `key` or `key: description`; score: levels, lowest
+   first; noul: optionally `true: ...` and `false: ...`). `Ctrl+S` saves,
+   checked against TypeSafe's limits.
+2. `F5` asks. When Intel Phi Jev's server is down it is started first
+   (a minute or so for the 35B); the header shows what runs.
+3. Each answer shows as bars under its question: every option's or
+   level's probability, the chosen one in full copper, the confidence.
+4. **examples** (`e`): TypeSafe's published requests. One loads into ask
+   with Jev's published answer beside each question. After `F5`, Jev's
+   number stands next to the local one, for as long as neither the
+   question nor the state is edited.
+5. **server** (`s`): state, subject, models; `s` starts, `x` stops and
+   gives the cards back. `l` and `w` on the questions load and write
+   request files, which `mjev query --file` takes too.
+
+`F1` lists every key. On a first run with no Intel Phi Jev built, home
+says where to build it. The plan and its stages are in
+[docs/tui.md](docs/tui.md).
+
 ## Commands
 
 | command | does |
@@ -44,6 +76,7 @@ about 45 s); after that a question takes seconds.
 | `mjev eval cases.jsonl [--rows R] [--limit N]` | a labelled case file: accuracy, Brier, ECE, coverage at 5 percent error, latency |
 | `mjev corroborate A B` | two recorded runs compared question by question |
 | `mjev models` | what the server serves |
+| `mjev tui [--file req.json]` | the terminal interface (see [Use it](#use-it)) |
 | `mjev serve` / `mjev stop` | start the server / stop it and release the cards |
 | `mjev reconstruct --file req.json` | what Jev most likely does with a request (offline): the document and each question's branch as the model reads it |
 | `mjev evidence` | Jev's published answers as a case file and rows, to measure a server against (`make closeness`) |

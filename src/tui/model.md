@@ -1,14 +1,21 @@
 # tui/model.rs: the draft request and the answer lines
 
 What the TUI edits: the state as text and each question as a `QDraft`
-(id, kind, instructions, and options as text: a Choice's `key` or
-`key: description` per line, a Score's levels one per line, lowest first).
-`Draft::to_request` builds the wire `Request`: a state that parses as a
-JSON object or array goes as that structure, anything else as text; every
-question is checked by `protocol::parse_questions`, the client's own
-limits, so a bad one is reported before any round trip.
-`Draft::from_request` goes the other way (loading a file or one of
-TypeSafe's published examples).
+(id, kind, instructions, and options as text, one per line: a Choice's
+`key` or `key: description`, a Score's levels lowest first, a Noul's
+optional `true: what yes means` and `false: what no means`, both or
+neither). `Draft::to_request` builds the wire `Request`; every question is
+checked by `protocol::parse_questions`, the client's own limits, so a bad
+one is reported before any round trip. `Draft::from_request` goes the
+other way (loading a file or one of TypeSafe's published examples).
+
+TypeSafe's instructions, descriptions, levels and states may be JSON
+structures, not just text (its "structured instructions" example). So
+`structured` reads a field that parses as a JSON object or array as that
+structure and anything else as trimmed text; `state_value` does the same
+for the state but keeps text as written. Loading shows a structured
+instruction pretty-printed and a structured description or level compact,
+on its one line. A Choice key cannot contain `:` (the first `:` ends it).
 
 What the TUI shows: `answer_lines` turns one answer into lines of label,
 probability and note: a Noul's p(yes); each option of a Choice in the
@@ -20,4 +27,6 @@ carries Jev's number beside the local one. `filled` sizes a bar.
 
 Tested: a draft through the wire form and back, a JSON state kept as
 structure, a bad Score caught before sending, a Choice's lines with Jev's
-beside them.
+beside them, and every published request (`evidence::all`) through the
+editor and back unchanged (it caught the Noul's criteria and the
+structured fields, both lost before).

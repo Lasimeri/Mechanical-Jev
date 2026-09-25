@@ -105,6 +105,25 @@ impl Client {
             .is_ok()
     }
 
+    /// What `GET /health` says (xks: `{"status": "ok", "subject": ...}`),
+    /// with the same 2 s limit as `healthy`.
+    pub fn health(&self) -> Result<Value, JevError> {
+        let r = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .get(&format!("{}/health", self.base))
+            .call();
+        match r {
+            Ok(r) => r
+                .into_json()
+                .map_err(|e| JevError::Malformed(e.to_string())),
+            Err(ureq::Error::Status(code, r)) => {
+                Err(JevError::Status(code, r.into_string().unwrap_or_default()))
+            }
+            Err(e) => Err(JevError::Transport(e.to_string())),
+        }
+    }
+
     /// Ask the server. Returns the response and the end-to-end time of the
     /// call that succeeded.
     pub fn system_one(&self, req: &Request) -> Result<(Response, Duration), JevError> {

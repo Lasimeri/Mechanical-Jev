@@ -84,6 +84,13 @@ enum Cmd {
     Serve,
     /// Stop Intel Phi Jev's server and release the Phi cards.
     Stop,
+    /// The terminal interface: write a state and questions, ask, read the
+    /// answers as bars; the server started and stopped from the same screen.
+    Tui {
+        /// A request file to open with.
+        #[arg(long)]
+        file: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -166,6 +173,8 @@ fn run() -> Result<(), String> {
     }
     let client = Client::from_env();
     match cli.cmd {
+        // Starts nothing up front: the TUI starts the server when asked to.
+        Cmd::Tui { file } => return mechanical_jev::tui::app::run(client, file),
         Cmd::Serve => return phi::serve(&client),
         Cmd::Stop => return phi::stop(),
         _ => phi::ensure(&client)?,
@@ -215,7 +224,8 @@ fn run() -> Result<(), String> {
         | Cmd::Reconstruct { .. }
         | Cmd::Evidence { .. }
         | Cmd::Serve
-        | Cmd::Stop => Ok(()),
+        | Cmd::Stop
+        | Cmd::Tui { .. } => Ok(()),
     }
 }
 

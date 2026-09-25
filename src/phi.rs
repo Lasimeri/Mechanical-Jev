@@ -7,7 +7,7 @@
 //! phi.md.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use crate::client::Client;
 
@@ -65,7 +65,7 @@ fn on_path(name: &str) -> Option<PathBuf> {
 }
 
 /// `host:port` of the client's base URL, when it is this machine.
-fn local_bind(base: &str) -> Option<String> {
+pub fn local_bind(base: &str) -> Option<String> {
     let rest = base.strip_prefix("http://")?;
     let hostport = rest.split('/').next()?;
     let host = hostport.split(':').next()?;
@@ -75,13 +75,19 @@ fn local_bind(base: &str) -> Option<String> {
 /// The server answering, started if it is local and down (unless
 /// `MJEV_AUTOSTART=0`).
 pub fn ensure(client: &Client) -> Result<(), String> {
+    ensure_as(client, Say::Terminal).map(drop)
+}
+
+/// `ensure`, with `xks`'s messages sent where `say` says. Returns what the
+/// log holds when a start wrote one (else nothing).
+pub fn ensure_as(client: &Client, say: Say) -> Result<String, String> {
     // A remote server is asked directly: `/health` is xks's, not part of
     // the System One API, and nothing here can start a remote one.
     let Some(bind) = local_bind(&client.base) else {
-        return Ok(());
+        return Ok(String::new());
     };
     if client.healthy() {
-        return Ok(());
+        return Ok(String::new());
     }
     if std::env::var("MJEV_AUTOSTART").as_deref() == Ok("0") {
         return Err(format!(
@@ -89,7 +95,7 @@ pub fn ensure(client: &Client) -> Result<(), String> {
             client.base
         ));
     }
-    start(&bind)
+    start_as(&bind, say)
 }
 
 /// `mjev serve`: start the local server whatever `MJEV_AUTOSTART` says
@@ -108,34 +114,106 @@ pub fn serve(client: &Client) -> Result<(), String> {
     start(&bind)
 }
 
+/// Where `xks`'s own messages go: the terminal (`mjev`'s commands), or a
+/// log whose last lines come back (the TUI, whose screen they would tear).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Say {
+    Terminal,
+    Log,
+}
+
+/// The log `Say::Log` writes, fresh for each run of `xks`:
+/// `$XDG_RUNTIME_DIR/mjev/xks.log`, else in the temporary directory.
+pub fn log_path() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("mjev")
+        .join("xks.log")
+}
+
+/// The last `n` lines of the log.
+fn log_tail(n: usize) -> String {
+    let text = std::fs::read_to_string(log_path()).unwrap_or_default();
+    let lines: Vec<&str> = text.lines().filter(|l| !l.trim().is_empty()).collect();
+    lines[lines.len().saturating_sub(n)..].join("\n")
+}
+
+/// `xks` with `args`, its output where `say` says. A file, not a pipe, for
+/// the log: `status` returns when `xks` does, even if something it
+/// started keeps an inherited descriptor open.
+fn run_xks(args: &[&str], say: Say) -> Result<bool, String> {
+    let bin = xks();
+    let mut cmd = Command::new(&bin);
+    cmd.args(args).stdin(Stdio::null());
+    match say {
+        // As `mjev` always ran it: `xks`'s stdout onto stderr, so a
+        // command's own output stays clean.
+        Say::Terminal => {
+            cmd.stdout(Stdio::from(std::io::stderr()));
+        }
+        Say::Log => {
+            let p = log_path();
+            if let Some(d) = p.parent() {
+                std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
+            }
+            let out = std::fs::File::create(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+            let err = out.try_clone().map_err(|e| e.to_string())?;
+            cmd.stdout(out).stderr(err);
+        }
+    }
+    cmd.status()
+        .map(|s| s.success())
+        .map_err(|e| format!("{}: {e}", bin.display()))
+}
+
+/// An error, with the log's last lines under it when there is a log.
+fn with_tail(msg: &str, say: Say) -> String {
+    match say {
+        Say::Terminal => msg.into(),
+        Say::Log => format!("{msg}\n{}", log_tail(6)),
+    }
+}
+
 /// Start the server on `bind` (`host:port`).
 pub fn start(bind: &str) -> Result<(), String> {
+    start_as(bind, Say::Terminal).map(drop)
+}
+
+/// `start`, with `xks`'s messages sent where `say` says.
+pub fn start_as(bind: &str, say: Say) -> Result<String, String> {
     let bin = xks();
     if !bin.is_file() {
-        let checkout = bin
-            .ancestors()
-            .nth(3)
-            .map_or_else(|| "Intel Phi Jev".into(), |p| p.display().to_string());
-        return Err(format!(
-            "Intel Phi Jev is not built at {} (clone github.com/Lasimeri/Intel-Phi-Jev next to this \
-             checkout, then: cd \"{checkout}\" && make build-x86), or set MJEV_XKS",
-            bin.display()
-        ));
+        return Err(not_built(&bin));
     }
-    eprintln!("mjev: starting Intel Phi Jev on {bind} (loads the model; a minute or so)");
-    let status = Command::new(&bin)
-        .args(["serve", "--detach", "--bind", bind])
-        .stdout(std::process::Stdio::from(std::io::stderr()))
-        .status()
-        .map_err(|e| format!("{}: {e}", bin.display()))?;
-    if status.success() {
-        Ok(())
+    if say == Say::Terminal {
+        eprintln!("mjev: starting Intel Phi Jev on {bind} (loads the model; a minute or so)");
+    }
+    if run_xks(&["serve", "--detach", "--bind", bind], say)? {
+        Ok(if say == Say::Log {
+            log_tail(6)
+        } else {
+            String::new()
+        })
     } else {
-        Err(
-            "Intel Phi Jev's server did not start (see its log: $XDG_RUNTIME_DIR/xks/serve.log)"
-                .into(),
-        )
+        Err(with_tail(
+            "Intel Phi Jev's server did not start (see its log: $XDG_RUNTIME_DIR/xks/serve.log)",
+            say,
+        ))
     }
+}
+
+/// Why `bin` cannot run, and how to build it.
+pub fn not_built(bin: &Path) -> String {
+    let checkout = bin
+        .ancestors()
+        .nth(3)
+        .map_or_else(|| "Intel Phi Jev".into(), |p| p.display().to_string());
+    format!(
+        "Intel Phi Jev is not built at {} (clone github.com/Lasimeri/Intel-Phi-Jev next to this \
+         checkout, then: cd \"{checkout}\" && make build-x86), or set MJEV_XKS",
+        bin.display()
+    )
 }
 
 /// Stop the server and release the cards.
@@ -149,6 +227,18 @@ pub fn stop() -> Result<(), String> {
         Ok(())
     } else {
         Err("xks stop failed".into())
+    }
+}
+
+/// `stop`, with `xks`'s messages in the log; returns its last lines.
+pub fn stop_as(say: Say) -> Result<String, String> {
+    if say == Say::Terminal {
+        return stop().map(|_| String::new());
+    }
+    if run_xks(&["stop"], say)? {
+        Ok(log_tail(6))
+    } else {
+        Err(with_tail("xks stop failed", say))
     }
 }
 

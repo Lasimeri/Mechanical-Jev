@@ -38,7 +38,7 @@ impl Kind {
     /// What the options field holds for this kind.
     pub fn options_hint(self) -> &'static str {
         match self {
-            Kind::Noul => "none: a noul is a statement, answered with p(yes)",
+            Kind::Noul => "optional: `true: what yes means` and `false: what no means`",
             Kind::Choice => "one option per line: key, or key: description",
             Kind::Score => "one level per line, lowest first (2 to 10)",
         }
@@ -75,7 +75,35 @@ impl QDraft {
                 .filter(|l| !l.is_empty())
         };
         let v = match self.kind {
-            Kind::Noul => json!({"type": "noul", "instructions": self.instructions.trim()}),
+            Kind::Noul => {
+                let mut v = json!({"type": "noul", "instructions": structured(&self.instructions)});
+                let (mut t, mut f) = (None, None);
+                for l in lines() {
+                    match l.split_once(':').map(|(k, d)| (k.trim(), d.trim())) {
+                        Some(("true", d)) => t = Some(d),
+                        Some(("false", d)) => f = Some(d),
+                        _ => {
+                            return Err(format!(
+                                "`{}`: a noul's lines are `true: ...` and `false: ...`",
+                                self.id
+                            ))
+                        }
+                    }
+                }
+                match (t, f) {
+                    (Some(t), Some(f)) => {
+                        v["criteria"] = json!({"true": structured(t), "false": structured(f)})
+                    }
+                    (None, None) => {}
+                    _ => {
+                        return Err(format!(
+                            "`{}`: a noul needs both `true:` and `false:`, or neither",
+                            self.id
+                        ))
+                    }
+                }
+                v
+            }
             Kind::Choice => {
                 let mut criteria = Map::new();
                 for l in lines() {
@@ -84,13 +112,20 @@ impl QDraft {
                     if criteria.contains_key(k) {
                         return Err(format!("`{}`: option `{k}` twice", self.id));
                     }
-                    criteria.insert(k.into(), if d.is_empty() { Value::Null } else { json!(d) });
+                    criteria.insert(
+                        k.into(),
+                        if d.is_empty() {
+                            Value::Null
+                        } else {
+                            structured(d)
+                        },
+                    );
                 }
-                json!({"type": "choice", "instructions": self.instructions.trim(), "criteria": criteria})
+                json!({"type": "choice", "instructions": structured(&self.instructions), "criteria": criteria})
             }
             Kind::Score => {
-                let levels: Vec<&str> = lines().collect();
-                json!({"type": "score", "instructions": self.instructions.trim(), "criteria": levels})
+                let levels: Vec<Value> = lines().map(structured).collect();
+                json!({"type": "score", "instructions": structured(&self.instructions), "criteria": levels})
             }
         };
         if self.id.trim().is_empty() {
@@ -106,17 +141,28 @@ impl QDraft {
     }
 
     pub fn from_question(id: &str, q: &Question) -> Self {
+        // Instructions have a field of their own lines; an option or a
+        // level is one line, so its structure goes compact.
+        let instr = |v: &Value| match v {
+            Value::String(s) => s.clone(),
+            other => serde_json::to_string_pretty(other).unwrap_or_default(),
+        };
         let text = |v: &Value| match v {
             Value::String(s) => s.clone(),
             Value::Null => String::new(),
             other => other.to_string(),
         };
         match q {
-            Question::Noul { instructions, .. } => Self {
+            Question::Noul {
+                instructions,
+                criteria,
+            } => Self {
                 id: id.into(),
                 kind: Kind::Noul,
-                instructions: text(instructions),
-                options: String::new(),
+                instructions: instr(instructions),
+                options: criteria.as_ref().map_or_else(String::new, |c| {
+                    format!("true: {}\nfalse: {}", text(&c.is_true), text(&c.is_false))
+                }),
             },
             Question::Choice {
                 instructions,
@@ -124,7 +170,7 @@ impl QDraft {
             } => Self {
                 id: id.into(),
                 kind: Kind::Choice,
-                instructions: text(instructions),
+                instructions: instr(instructions),
                 options: criteria
                     .iter()
                     .map(|(k, v)| match text(v) {
@@ -140,10 +186,32 @@ impl QDraft {
             } => Self {
                 id: id.into(),
                 kind: Kind::Score,
-                instructions: text(instructions),
+                instructions: instr(instructions),
                 options: criteria.iter().map(text).collect::<Vec<_>>().join("\n"),
             },
         }
+    }
+}
+
+/// Text as a value: a JSON object or array as that structure (TypeSafe's
+/// instructions, descriptions and states may be structured), anything else
+/// as the trimmed text.
+pub fn structured(s: &str) -> Value {
+    let t = s.trim();
+    if t.starts_with('{') || t.starts_with('[') {
+        if let Ok(v) = serde_json::from_str(t) {
+            return v;
+        }
+    }
+    Value::String(t.into())
+}
+
+/// A state as it goes on the wire: a JSON object or array as that
+/// structure, anything else as the text as written (not trimmed).
+pub fn state_value(s: &str) -> Value {
+    match structured(s) {
+        Value::String(_) => Value::String(s.into()),
+        v => v,
     }
 }
 
@@ -156,17 +224,13 @@ pub struct Draft {
 
 impl Draft {
     /// The wire request. A state that is a JSON object or array goes as
-    /// that structure (Jev reads it indented); anything else as text.
+    /// that structure (Jev reads it indented); anything else as text, as
+    /// written.
     pub fn to_request(&self) -> Result<Request, String> {
         if self.questions.is_empty() {
             return Err("no questions yet: add one".into());
         }
-        let trimmed = self.state.trim_start();
-        let state = if trimmed.starts_with('{') || trimmed.starts_with('[') {
-            serde_json::from_str(&self.state).unwrap_or_else(|_| Value::String(self.state.clone()))
-        } else {
-            Value::String(self.state.clone())
-        };
+        let state = state_value(&self.state);
         let mut questions = Map::new();
         for q in &self.questions {
             if questions.contains_key(&q.id) {
@@ -399,5 +463,14 @@ mod tests {
         assert_eq!(l[2].note, "jev 0.76");
         assert_eq!(filled(0.5, 10), 5);
         assert_eq!(filled(1.7, 10), 10);
+    }
+
+    #[test]
+    fn every_published_request_survives_the_editor() {
+        for e in crate::evidence::all() {
+            let req: Request = serde_json::from_value(e["request"].clone()).unwrap();
+            let back = Draft::from_request(&req).unwrap().to_request().unwrap();
+            assert_eq!(back, req, "{}", e["request"]);
+        }
     }
 }

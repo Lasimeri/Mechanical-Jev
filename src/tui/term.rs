@@ -7,6 +7,7 @@
 //! keys and escape sequences, the layout here. See term.md.
 
 use std::io::{self, Stdout, Write};
+use std::sync::Mutex;
 
 use crossterm::style::{
     Attribute, Color, Print, ResetColor, SetAttribute, SetBackgroundColor, SetForegroundColor,
@@ -60,6 +61,8 @@ pub mod theme {
 pub struct Span {
     pub text: String,
     pub fg: Color,
+    /// The colour under this run, when not the row's.
+    pub bg: Option<Color>,
     pub bold: bool,
     pub italic: bool,
 }
@@ -69,9 +72,15 @@ impl Span {
         Self {
             text: text.into(),
             fg,
+            bg: None,
             bold: false,
             italic: false,
         }
+    }
+
+    pub fn on(mut self, bg: Color) -> Self {
+        self.bg = Some(bg);
+        self
     }
 
     pub fn bold(mut self) -> Self {
@@ -117,11 +126,38 @@ impl Frame {
         }
     }
 
-    /// Set row `r` (ignored past the bottom).
+    /// Set row `r` (ignored past the bottom), cut to the frame's width.
     pub fn set(&mut self, r: u16, spans: Vec<Span>, bg: Color) {
-        if let Some(row) = self.rows.get_mut(r as usize) {
-            *row = Row { spans, bg };
+        let mut left = self.width as usize;
+        let mut kept = Vec::with_capacity(spans.len());
+        for mut s in spans {
+            if left == 0 {
+                break;
+            }
+            let n = s.text.chars().count();
+            if n > left {
+                s.text = s.text.chars().take(left).collect();
+            }
+            left -= n.min(left);
+            kept.push(s);
         }
+        if let Some(row) = self.rows.get_mut(r as usize) {
+            *row = Row { spans: kept, bg };
+        }
+    }
+
+    /// Characters in row `r`.
+    pub fn row_width(&self, r: usize) -> usize {
+        self.rows.get(r).map_or(0, |row| {
+            row.spans.iter().map(|s| s.text.chars().count()).sum()
+        })
+    }
+
+    /// Row `r`'s text, unstyled.
+    pub fn row_text(&self, r: usize) -> String {
+        self.rows.get(r).map_or_else(String::new, |row| {
+            row.spans.iter().map(|s| s.text.as_str()).collect()
+        })
     }
 }
 
@@ -130,12 +166,29 @@ pub struct Term {
     out: Stdout,
 }
 
+/// A worker thread's last panic, kept instead of printed (it would land on
+/// the screen); `take_worker_panic` hands it to whoever reports it.
+static WORKER_PANIC: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn take_worker_panic() -> Option<String> {
+    WORKER_PANIC.lock().ok()?.take()
+}
+
 impl Term {
+    /// Raw mode and the alternate screen. A panic on this thread (the one
+    /// that draws) puts the terminal back before it is reported; a panic
+    /// on any other thread leaves the screen alone and is kept for
+    /// `take_worker_panic`, since drawing goes on.
     pub fn open() -> io::Result<Term> {
+        let ui = std::thread::current().id();
         let prev = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |info| {
-            restore();
-            prev(info);
+            if std::thread::current().id() == ui {
+                restore();
+                prev(info);
+            } else if let Ok(mut slot) = WORKER_PANIC.lock() {
+                *slot = Some(info.to_string());
+            }
         }));
         terminal::enable_raw_mode()?;
         let mut out = io::stdout();
@@ -168,6 +221,9 @@ impl Term {
                 let text: String = s.text.chars().take(left).collect();
                 left -= text.chars().count();
                 queue!(self.out, SetForegroundColor(s.fg))?;
+                if let Some(bg) = s.bg {
+                    queue!(self.out, SetBackgroundColor(bg))?;
+                }
                 if s.bold {
                     queue!(self.out, SetAttribute(Attribute::Bold))?;
                 }

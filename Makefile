@@ -3,13 +3,16 @@
 .DEFAULT_GOAL := help
 MJEV := target/release/mjev
 
-.PHONY: help build query eval models reconstruct evidence tokenizers closeness serve stop test fmt clippy docs-check tool-check check clean
+.PHONY: help build tui query eval models reconstruct evidence tokenizers closeness serve stop test fmt clippy docs-check tool-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
 
 build: ## Build mjev
 	cargo build --release
+
+tui: build ## The terminal interface (FILE=request.json to open one)
+	$(MJEV) tui $(if $(FILE),--file $(FILE))
 
 query: build ## Ask examples/query.json (starts Intel Phi Jev if it is down)
 	$(MJEV) query --file examples/query.json

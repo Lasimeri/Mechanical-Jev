@@ -15,7 +15,9 @@
 //! - [`corroborate`]: two recorded runs compared question by question.
 //! - [`reconstruction`]: Jev's request pipeline, inferred from its
 //!   documentation alone (docs/reverse-engineering.md).
+//! - [`evidence`]: Jev's published answers as cases and eval rows.
 //! - [`config`]: the API key and defaults from files.
+//! - [`tui`]: `mjev tui`, the terminal interface (docs/tui.md).
 
 pub mod client;
 pub mod confidence;

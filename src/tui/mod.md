@@ -5,7 +5,12 @@ a state, add typed questions, ask, and read every answer as bars, with
 the local server started when it is down and stopped (the cards released)
 from the same screen. Themed after seaof.glass (`term.md`).
 
-Built in stages. Here and tested: `editor` (text editing), `model` (the
-draft request and the answer lines), `term` (the terminal and the
-palette). Next: the app loop that joins them, its screens, keys and
-background jobs, as planned in [`docs/tui.md`](../../docs/tui.md).
+| module | what |
+| --- | --- |
+| [`editor`](editor.md) | text editing |
+| [`model`](model.md) | the draft request, to and from the wire; answers as lines |
+| [`term`](term.md) | the terminal, frames, the palette |
+| [`view`](view.md) | each screen drawn |
+| [`app`](app.md) | screens, keys, jobs, the loop |
+
+The plan, its stages and the keys: [`docs/tui.md`](../../docs/tui.md).

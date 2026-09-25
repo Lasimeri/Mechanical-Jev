@@ -1,0 +1,30 @@
+# tui/view.rs: drawing
+
+Each screen as a [`term::Frame`](term.md), in seaof.glass's colours and
+lowercase. Nothing here changes what the app holds but scroll positions.
+
+- **home**: as the site opens: the name, the verse under it ("and before
+  the throne there was a sea of glass like unto crystal", Revelation 4:6,
+  dim and italic; left out when the terminal is short), a section rule
+  (`── jev on the phi cards ──`), the rows `/ ask` `/ examples` `/ server`
+  `/ help` `/ quit` with a dim description on the right and the selected
+  row on the surface colour, then the server's address and state. When
+  Intel Phi Jev is not built, how to build it (`phi::not_built`).
+- **ask**: the state's editor, then the questions, each with its answer
+  under it: a label, a bar (`█` for the probability, `─` for the rest;
+  copper for the chosen option, the dimmer accent for the others), the
+  value, and Jev's number as a note. The selected question's rows are
+  kept in view.
+- **form**: kind, id, instructions, options, the focused field marked `›`;
+  the options' hint follows the kind.
+- **examples**: TypeSafe's published requests, one row each (ids, kinds,
+  the state's first line), where the selected one is from and its note.
+- **server**: address, state, subject, models, which `xks`, where the logs
+  are, and the last lines `xks` wrote.
+- **help**: the keys.
+
+Every screen has a header (where you are on the left, the server or the
+running job with a spinner on the right) and a footer (the status or a
+file prompt, then the keys). Below 40x10 only "the terminal is too small"
+is drawn. Widths count characters; wide characters (CJK, emoji) are taken
+as one column.
