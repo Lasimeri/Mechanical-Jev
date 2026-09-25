@@ -15,6 +15,10 @@ prints what Jev most likely does with a request
 published answers as cases and rows ([`evidence.rs`](evidence.md)).
 `eval` adds the model, the case count and the wall time to its metrics.
 
+`query --bars` prints the answers as the TUI draws them (each question,
+its options or levels with bars, a `•` on the chosen one) instead of the
+JSON response ([`tui/model.rs`](tui/model.md), `answers_text`).
+
 `--choice id=instructions|options` and `--score id=instructions|levels`:
 the last `|` starts the options, so instructions may contain `|`; options
 or levels are separated by `;` when there is one (so a description may

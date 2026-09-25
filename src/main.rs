@@ -16,7 +16,7 @@ use mechanical_jev::{config, corroborate, eval, phi, reconstruction};
 #[command(
     name = "mjev",
     version,
-    about = "Mechanical Jev: System One questions (noul, choice, score) to Intel Phi Jev from the command line"
+    about = "Mechanical Jev: System One questions (noul, choice, score) to Intel Phi Jev from the command line; `mjev` alone, in a terminal, opens the TUI"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -44,6 +44,9 @@ enum Cmd {
         /// has commas)
         #[arg(long)]
         score: Vec<String>,
+        /// Print the answers as bars, as the TUI draws them, not JSON.
+        #[arg(long)]
+        bars: bool,
     },
     /// Score a labelled JSONL case file with Jev: accuracy, Brier, ECE,
     /// coverage, latency.
@@ -203,10 +206,16 @@ fn run() -> Result<(), String> {
             noul,
             choice,
             score,
+            bars,
         } => {
             let req = build_request(file, state, noul, choice, score)?;
             let (resp, took) = client.system_one(&req).map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+            if bars {
+                let text = mechanical_jev::tui::model::answers_text(&req, &resp.answers, 30);
+                print!("{text}");
+            } else {
+                println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+            }
             eprintln!("{}: {:.1} ms", resp.model, took.as_secs_f64() * 1e3);
             Ok(())
         }

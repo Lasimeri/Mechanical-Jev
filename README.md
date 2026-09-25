@@ -82,7 +82,7 @@ them to the 256-colour palette for a terminal without truecolor. The plan and it
 
 | command | does |
 | --- | --- |
-| `mjev query --file req.json` | one request (or `--state` with `--noul/--choice/--score`, or stdin) |
+| `mjev query --file req.json [--bars]` | one request (or `--state` with `--noul/--choice/--score`, or stdin); the response as JSON, or with `--bars` as the TUI draws it |
 | `mjev eval cases.jsonl [--rows R] [--limit N]` | a labelled case file: accuracy, Brier, ECE, coverage at 5 percent error, latency |
 | `mjev corroborate A B` | two recorded runs compared question by question |
 | `mjev models` | what the server serves |

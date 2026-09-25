@@ -457,6 +457,53 @@ pub fn answer_lines(q: &QDraft, answer: &Value, jev: Option<&Value>) -> Vec<Line
     }
 }
 
+/// A response as plain text, for `mjev query --bars`: each question, then
+/// its answer's lines as the TUI draws them, a `•` on the chosen one, bars
+/// `width` cells wide.
+pub fn answers_text(req: &Request, answers: &Map<String, Value>, width: usize) -> String {
+    let Ok(d) = Draft::from_request(req) else {
+        return String::new();
+    };
+    let all: Vec<(&QDraft, Vec<Line>)> = d
+        .questions
+        .iter()
+        .map(|q| {
+            let lines = answers
+                .get(&q.id)
+                .map(|a| answer_lines(q, a, None))
+                .unwrap_or_default();
+            (q, lines)
+        })
+        .collect();
+    let lw = all
+        .iter()
+        .flat_map(|(_, ls)| ls.iter().map(|l| l.label.chars().count()))
+        .max()
+        .unwrap_or(0);
+    let mut out = String::new();
+    for (q, lines) in all {
+        out += &format!(
+            "{}  {}  {}\n",
+            q.id,
+            q.kind.name(),
+            summary(&q.instructions)
+        );
+        for l in lines {
+            let mark = if l.chosen { '•' } else { ' ' };
+            let label = format!("{:<lw$}", l.label);
+            out += &match l.p {
+                Some(p) => {
+                    let n = filled(p, width);
+                    let bar = "█".repeat(n) + &"─".repeat(width - n);
+                    format!("  {mark} {label} {bar} {p:.2}\n")
+                }
+                None => format!("  {mark} {label} {}\n", l.note),
+            };
+        }
+    }
+    out
+}
+
 /// A probability as `width` cells: how many are filled.
 pub fn filled(p: f64, width: usize) -> usize {
     ((p.clamp(0.0, 1.0) * width as f64).round() as usize).min(width)
@@ -539,6 +586,21 @@ mod tests {
         assert!(d.to_request().is_err());
         assert_eq!(Draft::from_saved(&d.to_saved()), Some(d));
         assert_eq!(Draft::from_saved(&json!({"state": 1})), None);
+    }
+
+    #[test]
+    fn a_response_prints_as_bars() {
+        let e = &crate::evidence::all()[2]; // department: a Choice
+        let req: Request = serde_json::from_value(e["request"].clone()).unwrap();
+        let answers = e["response"]["answers"].as_object().unwrap();
+        let t = answers_text(&req, answers, 10);
+        assert!(t.starts_with("department  choice  Which team"), "{t}");
+        assert!(t.contains("• billing"), "{t}");
+        assert!(
+            t.lines()
+                .any(|l| l.contains("confidence") && l.contains('█')),
+            "{t}"
+        );
     }
 
     #[test]

@@ -30,6 +30,7 @@ marked, then its confidence and, with no bar (it is a level, not a
 probability), the expected score out of the top level. With Jev's published answer to
 the same question (an example from TypeSafe's documentation) each line
 carries Jev's number beside the local one. `filled` sizes a bar.
+`answers_text` is the same as plain text for `mjev query --bars`.
 
 Tested: a draft through the wire form and back, a JSON state kept as
 structure, a bad Score caught before sending, a Choice's lines with Jev's
