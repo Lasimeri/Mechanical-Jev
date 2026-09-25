@@ -58,9 +58,11 @@ of each card's memory until then.
   example it came from, so Jev's numbers come back too. Written
   atomically (a temporary file, then a rename) on each saved question,
   each ask, on quitting, and every 5 s while it changes (a closed window
-  or a kill loses at most those seconds of typing); restored when `mjev
-  tui` opens without `--file`. The draft kept is the last one worked on,
-  a `--file` run's included. The tests keep it nowhere (`draft_file` is `None`).
+  or a kill loses at most those seconds of typing). `mjev tui` always
+  opens with it (`open_with`); a `--file` loads over it like `l` does, so
+  the kept draft is one `u` away. A run writes only what it changed
+  (`keep_if_changed`): quitting an idle second TUI leaves the draft
+  another one kept. The tests keep it nowhere (`draft_file` is `None`).
 - **Undo:** `u` puts the draft back as it was before the last delete,
   move (`Alt+↑` `↓`), saved question, load or clear, up to 50 back, with
   the example it came from; the answers stay and show as changed where

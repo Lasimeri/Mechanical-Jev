@@ -1004,6 +1004,34 @@ impl App {
         r.map_err(|e| format!("the draft was not kept: {}: {e}", p.display()))
     }
 
+    /// What `mjev tui` opens with: the kept draft, then `file` over it
+    /// (which `u` undoes), so opening a file never loses the draft.
+    pub fn open_with(&mut self, file: Option<&Path>) {
+        let restored = self.restore_draft();
+        if !restored {
+            // Nothing on disk to lose: an untouched run writes nothing.
+            (self.kept, self.kept_at) = (Some(self.draft()), Some(Instant::now()));
+        }
+        match file {
+            Some(p) => {
+                self.load_file(p);
+                self.screen = Screen::Ask;
+            }
+            None if restored => self.info("your last draft is back in / ask"),
+            None => {}
+        }
+    }
+
+    /// At quit: the draft written only if this run changed it since it
+    /// was last written, so quitting an idle second TUI does not overwrite
+    /// the draft another one kept.
+    pub fn keep_if_changed(&self) -> Result<(), String> {
+        if self.kept.as_ref() == Some(&self.draft()) {
+            return Ok(());
+        }
+        self.keep_draft()
+    }
+
     /// The draft kept by the last run, if any; whether there was one.
     pub fn restore_draft(&mut self) -> bool {
         let Some(p) = &self.draft_file else {
@@ -1289,12 +1317,7 @@ pub fn run(client: Client, file: Option<PathBuf>) -> Result<(), String> {
     }
     let mut app = App::new(client);
     app.draft_file = Some(draft_path());
-    if let Some(p) = file {
-        app.load_file(&p);
-        app.screen = Screen::Ask;
-    } else if app.restore_draft() {
-        app.info("your last draft is back in / ask");
-    }
+    app.open_with(file.as_deref());
     let mut term = Term::open().map_err(|e| format!("the terminal: {e}"))?;
     let mut dirty = true;
     while !app.quit {
@@ -1314,7 +1337,7 @@ pub fn run(client: Client, file: Option<PathBuf>) -> Result<(), String> {
             dirty = true;
         }
     }
-    let kept = app.keep_draft();
+    let kept = app.keep_if_changed();
     // Back on the main screen first, so the lines stay visible.
     drop(term);
     if let Err(e) = kept {
@@ -1617,6 +1640,36 @@ mod tests {
         assert!(b.restore_draft());
         assert_eq!(b.state.text(), "typed, never saved");
         std::fs::remove_file(&p).unwrap();
+    }
+
+    #[test]
+    fn opening_a_file_keeps_the_draft_behind_u_and_an_idle_run_writes_nothing() {
+        let dir = std::env::temp_dir().join(format!("mjev-open-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (kept, file) = (dir.join("draft.json"), dir.join("req.json"));
+        let mut a = app();
+        a.draft_file = Some(kept.clone());
+        a.load_example(0);
+        a.save_draft();
+        let before = a.draft();
+        let other = &a.examples[a.examples.len() - 1].request;
+        std::fs::write(&file, serde_json::to_string(other).unwrap()).unwrap();
+
+        let mut b = app();
+        b.draft_file = Some(kept.clone());
+        b.open_with(Some(&file));
+        assert_ne!(b.draft(), before, "the file is open");
+        press(&mut b, KeyCode::Char('u'));
+        assert_eq!(b.draft(), before, "the kept draft is one u away");
+
+        // An idle run quitting leaves the file as it is.
+        let written = std::fs::read_to_string(&kept).unwrap();
+        let mut c = app();
+        c.draft_file = Some(kept.clone());
+        c.open_with(None);
+        c.keep_if_changed().unwrap();
+        assert_eq!(std::fs::read_to_string(&kept).unwrap(), written);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     /// Every screen at every size: rows inside the width, the cursor on
