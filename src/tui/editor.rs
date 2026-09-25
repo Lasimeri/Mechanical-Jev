@@ -1,8 +1,10 @@
 //! Text editing for the TUI: a buffer of lines and a cursor, with the
 //! operations a terminal's keys map to. No terminal here: the TUI draws
 //! what `visible` returns and moves the cursor where `cursor_on_screen`
-//! says. `single_line` editors ignore newlines (a pasted newline becomes a
-//! space). See editor.md.
+//! says. A multi-line editor wraps its lines to the view's width (at a
+//! space when one fits, else mid-word), and up and down move by the rows
+//! as drawn. `single_line` editors ignore newlines (a pasted newline
+//! becomes a space) and scroll sideways instead. See editor.md.
 
 #[derive(Debug, Clone)]
 pub struct Editor {
@@ -10,10 +12,50 @@ pub struct Editor {
     /// Cursor: line, and column in characters.
     row: usize,
     col: usize,
-    /// The first line and column shown.
+    /// The first row shown (a line when not wrapping, a drawn row when
+    /// wrapping) and, when not wrapping, the first column.
     top: usize,
     left: usize,
     single_line: bool,
+    /// The width lines wrap at, from the last `visible` (0: none yet).
+    width: usize,
+    /// The column up and down aim for, kept across a run of them.
+    goal: Option<usize>,
+    /// The cursor's place in the last view, when wrapping.
+    screen: (usize, usize),
+}
+
+/// Where each drawn row of a line starts, wrapped at `w` columns: after the
+/// last space that fits, else at `w` (a word longer than the row). A space
+/// right after a full row hangs on it, in the column `visible` keeps free,
+/// rather than starting the next row by itself.
+fn breaks(l: &[char], w: usize) -> Vec<usize> {
+    let w = w.max(1);
+    let mut starts = vec![0];
+    let mut s = 0;
+    while l.len() - s > w {
+        let cut = if l[s + w] == ' ' {
+            s + w + 1
+        } else {
+            (s + 1..=s + w)
+                .rev()
+                .find(|&p| l[p - 1] == ' ')
+                .unwrap_or(s + w)
+        };
+        starts.push(cut);
+        s = cut;
+    }
+    starts
+}
+
+/// The drawn row holding (`row`, `col`), and the column in it. A column at
+/// a break belongs to the row that starts there.
+fn locate(rows: &[(usize, usize, usize)], row: usize, col: usize) -> (usize, usize) {
+    let i = rows
+        .iter()
+        .rposition(|&(r, s, _)| r == row && s <= col)
+        .unwrap_or(0);
+    (i, col - rows[i].1)
 }
 
 impl Editor {
@@ -25,6 +67,9 @@ impl Editor {
             top: 0,
             left: 0,
             single_line,
+            width: 0,
+            goal: None,
+            screen: (0, 0),
         }
     }
 
@@ -49,6 +94,7 @@ impl Editor {
         self.col = self.lines[self.row].len();
         self.top = 0;
         self.left = 0;
+        self.goal = None;
     }
 
     /// The cursor to the very start, the view with it (a loaded text reads
@@ -58,6 +104,7 @@ impl Editor {
         self.col = 0;
         self.top = 0;
         self.left = 0;
+        self.goal = None;
     }
 
     pub fn text(&self) -> String {
@@ -76,6 +123,22 @@ impl Editor {
         (self.row, self.col)
     }
 
+    fn wraps(&self) -> bool {
+        !self.single_line
+    }
+
+    /// The drawn rows at wrap width `w`: (line, start, end).
+    fn rows(&self, w: usize) -> Vec<(usize, usize, usize)> {
+        let mut out = Vec::new();
+        for (i, l) in self.lines.iter().enumerate() {
+            let b = breaks(l, w);
+            for (k, &s) in b.iter().enumerate() {
+                out.push((i, s, b.get(k + 1).copied().unwrap_or(l.len())));
+            }
+        }
+        out
+    }
+
     pub fn insert_char(&mut self, c: char) {
         if c == '\n' {
             return self.newline();
@@ -83,6 +146,7 @@ impl Editor {
         let c = if c == '\t' { ' ' } else { c };
         self.lines[self.row].insert(self.col, c);
         self.col += 1;
+        self.goal = None;
     }
 
     pub fn insert_str(&mut self, s: &str) {
@@ -103,6 +167,7 @@ impl Editor {
         self.lines.insert(self.row + 1, rest);
         self.row += 1;
         self.col = 0;
+        self.goal = None;
     }
 
     pub fn backspace(&mut self) {
@@ -115,6 +180,7 @@ impl Editor {
             self.col = self.lines[self.row].len();
             self.lines[self.row].extend(line);
         }
+        self.goal = None;
     }
 
     pub fn delete(&mut self) {
@@ -124,6 +190,7 @@ impl Editor {
             let next = self.lines.remove(self.row + 1);
             self.lines[self.row].extend(next);
         }
+        self.goal = None;
     }
 
     pub fn left(&mut self) {
@@ -133,6 +200,7 @@ impl Editor {
             self.row -= 1;
             self.col = self.lines[self.row].len();
         }
+        self.goal = None;
     }
 
     pub fn right(&mut self) {
@@ -142,28 +210,57 @@ impl Editor {
             self.row += 1;
             self.col = 0;
         }
+        self.goal = None;
     }
 
     pub fn up(&mut self) {
-        if self.row > 0 {
-            self.row -= 1;
-            self.col = self.col.min(self.lines[self.row].len());
-        }
+        self.vertical(-1);
     }
 
     pub fn down(&mut self) {
-        if self.row + 1 < self.lines.len() {
-            self.row += 1;
-            self.col = self.col.min(self.lines[self.row].len());
+        self.vertical(1);
+    }
+
+    /// One row up or down: a drawn row when wrapping (once a view has set
+    /// the width), else a line. The column aimed for is kept across a run
+    /// of these, so passing a short row does not pull the cursor left.
+    fn vertical(&mut self, by: isize) {
+        if self.wraps() && self.width > 0 {
+            let rows = self.rows(self.width);
+            let (i, c) = locate(&rows, self.row, self.col);
+            let goal = *self.goal.get_or_insert(c);
+            let Some(t) = i.checked_add_signed(by).filter(|&t| t < rows.len()) else {
+                return;
+            };
+            let (r, s, e) = rows[t];
+            // A column at the end of a row that is not its line's last is
+            // the next row's start; stop one short of it.
+            let last = rows.get(t + 1).is_none_or(|n| n.0 != r);
+            let max = if last { e } else { e - 1 };
+            self.row = r;
+            self.col = (s + goal).min(max);
+            return;
         }
+        let goal = *self.goal.get_or_insert(self.col);
+        let Some(r) = self
+            .row
+            .checked_add_signed(by)
+            .filter(|&r| r < self.lines.len())
+        else {
+            return;
+        };
+        self.row = r;
+        self.col = goal.min(self.lines[r].len());
     }
 
     pub fn home(&mut self) {
         self.col = 0;
+        self.goal = None;
     }
 
     pub fn end(&mut self) {
         self.col = self.lines[self.row].len();
+        self.goal = None;
     }
 
     pub fn page(&mut self, rows: isize) {
@@ -177,9 +274,27 @@ impl Editor {
     }
 
     /// Scroll so the cursor is inside a `width` x `height` view, and
-    /// return the visible slice of every visible line.
+    /// return the rows to draw. Wrapping keeps the last column free, so
+    /// the cursor after a full row's last character is still on screen.
     pub fn visible(&mut self, width: usize, height: usize) -> Vec<String> {
         let (width, height) = (width.max(1), height.max(1));
+        if self.wraps() {
+            self.width = (width - 1).max(1);
+            let rows = self.rows(self.width);
+            let (i, c) = locate(&rows, self.row, self.col);
+            if i < self.top {
+                self.top = i;
+            } else if i >= self.top + height {
+                self.top = i + 1 - height;
+            }
+            self.screen = (i - self.top, c);
+            return rows
+                .iter()
+                .skip(self.top)
+                .take(height)
+                .map(|&(r, s, e)| self.lines[r][s..e].iter().collect())
+                .collect();
+        }
         if self.row < self.top {
             self.top = self.row;
         } else if self.row >= self.top + height {
@@ -200,6 +315,9 @@ impl Editor {
 
     /// Where the cursor is inside the last `visible` view.
     pub fn cursor_on_screen(&self) -> (usize, usize) {
+        if self.wraps() {
+            return self.screen;
+        }
         (self.row - self.top, self.col - self.left)
     }
 }
@@ -225,22 +343,76 @@ mod tests {
     }
 
     #[test]
-    fn a_single_line_editor_keeps_one_line() {
+    fn a_single_line_editor_keeps_one_line_and_scrolls_sideways() {
         let mut e = Editor::new(true);
         e.insert_str("first\nsecond");
         e.newline();
         assert_eq!(e.text(), "first second");
+        let v = e.visible(4, 1);
+        assert_eq!(v, vec!["ond".to_string()]);
+        assert_eq!(e.cursor_on_screen(), (0, 3));
     }
 
     #[test]
-    fn the_view_follows_the_cursor() {
-        let mut e = Editor::with_text("0123456789\nx\ny\nz", false);
+    fn long_lines_wrap_at_spaces_and_every_word_is_drawn() {
+        let mut e = Editor::with_text("aaa bbb ccc\nd", false);
+        e.to_start();
+        // width 8: 7 columns of text, the last kept for the cursor
+        let v = e.visible(8, 5);
+        assert_eq!(v, vec!["aaa bbb ", "ccc", "d"]); // the space hangs
+        let mut long = Editor::with_text("abcdefghij", false);
+        assert_eq!(long.visible(5, 5), vec!["abcd", "efgh", "ij"]);
+        let mut exact = Editor::with_text("exactly8 exactly8", false);
+        assert_eq!(exact.visible(9, 5), vec!["exactly8 ", "exactly8"]);
+    }
+
+    #[test]
+    fn the_cursor_is_on_screen_at_every_position_and_right_visits_each_once() {
+        let text = "one two three four five six seven\n\nexactly8 exactly8\nx";
+        for width in [2, 5, 8, 9, 13, 40] {
+            let mut e = Editor::with_text(text, false);
+            e.to_start();
+            let mut seen = std::collections::HashSet::new();
+            loop {
+                let v = e.visible(width, 3);
+                let (y, x) = e.cursor_on_screen();
+                assert!(
+                    x < width && y < 3 && y < v.len(),
+                    "width {width} at {:?}",
+                    e.cursor()
+                );
+                assert!(
+                    seen.insert(e.cursor()),
+                    "width {width}: {:?} twice",
+                    e.cursor()
+                );
+                let before = e.cursor();
+                e.right();
+                if e.cursor() == before {
+                    break;
+                }
+            }
+            let positions: usize = text.split('\n').map(|l| l.chars().count() + 1).sum();
+            assert_eq!(seen.len(), positions, "width {width}");
+        }
+    }
+
+    #[test]
+    fn up_and_down_move_by_drawn_rows_and_keep_their_column() {
+        let mut e = Editor::with_text("aaaa bbbb cc dddd", false);
+        e.to_start();
+        e.visible(6, 5); // rows: "aaaa ", "bbbb ", "cc ", "dddd"
+        e.right();
+        e.right();
+        e.right(); // column 3 of row 0
+        e.down();
+        assert_eq!(e.cursor(), (0, 8));
+        e.down(); // "cc " has no column 3 short of the break: its end
+        assert_eq!(e.cursor(), (0, 12));
+        e.down(); // back to column 3 on "dddd"
+        assert_eq!(e.cursor(), (0, 16));
         e.up();
         e.up();
-        e.up();
-        e.end();
-        let v = e.visible(4, 2);
-        assert_eq!(v, vec!["789".to_string(), "".to_string()]);
-        assert_eq!(e.cursor_on_screen(), (0, 3));
+        assert_eq!(e.cursor(), (0, 8));
     }
 }
