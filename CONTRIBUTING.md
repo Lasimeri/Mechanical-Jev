@@ -48,7 +48,9 @@ sections are the same in every repository of the family (see
 - A dependency is found in that order, as a checkout under its GitHub
   clone's name (`Intel-Phi-Jev`) or the spaced one (`Intel Phi Jev`)
   ([`src/phi.md`](src/phi.md)). Nothing of a sibling is copied into
-  another.
+  another (the one exception is between Intel-Phi-3120A and
+  Intel-Phi-AVX512: the `knc-mvex` library, kept identical by the latter's
+  `make check`).
 - What this repository consumes from Intel-Phi-Jev: `xks serve --detach
   --bind`, `xks stop`, `target/release/xks` (where a checkout's binary is
   looked for), `$XDG_RUNTIME_DIR/xks/serve.log` (read as a start's
