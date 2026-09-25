@@ -25,6 +25,8 @@ const POLL: Duration = Duration::from_millis(100);
 const HEALTH_EVERY: Duration = Duration::from_secs(5);
 /// How long an info message stays; an error stays until the next one.
 const INFO_FOR: Duration = Duration::from_secs(8);
+/// How often a changed draft is written while the TUI runs.
+const AUTOSAVE: Duration = Duration::from_secs(5);
 /// How long a first press of a key that asks for a second one waits.
 const CONFIRM_FOR: Duration = Duration::from_secs(3);
 
@@ -356,6 +358,9 @@ pub struct App {
     /// Where the draft is kept between runs; `None` keeps it nowhere
     /// (the tests).
     pub draft_file: Option<PathBuf>,
+    /// The draft as last written there, and when it was checked.
+    kept: Option<Draft>,
+    kept_at: Option<Instant>,
     pub quit: bool,
     pub spin: usize,
     /// The first row of the help shown.
@@ -444,6 +449,8 @@ impl App {
             quit_armed: None,
             clear_armed: None,
             draft_file: None,
+            kept: None,
+            kept_at: None,
         }
     }
 
@@ -969,8 +976,10 @@ impl App {
 
     /// Keep the draft for the next run; an error on the status row.
     pub fn save_draft(&mut self) {
-        if let Err(e) = self.keep_draft() {
-            self.fail(e);
+        self.kept_at = Some(Instant::now());
+        match self.keep_draft() {
+            Ok(()) => self.kept = Some(self.draft()),
+            Err(e) => self.fail(e),
         }
     }
 
@@ -1018,6 +1027,8 @@ impl App {
         } else {
             Focus::Questions
         };
+        // What is on disk already: no write until it changes.
+        (self.kept, self.kept_at) = (Some(self.draft()), Some(Instant::now()));
         true
     }
 
@@ -1239,6 +1250,15 @@ impl App {
         if self.job.is_some() {
             self.spin = self.spin.wrapping_add(1);
             changed = true;
+        }
+        // Typing is kept too, not only saved questions and asks: a closed
+        // window or a kill loses at most the last few seconds.
+        let due = self.kept_at.is_none_or(|t| t.elapsed() >= AUTOSAVE);
+        if self.draft_file.is_some() && due {
+            self.kept_at = Some(Instant::now());
+            if self.kept.as_ref() != Some(&self.draft()) {
+                self.save_draft();
+            }
         }
         let info = self.status.as_ref().is_some_and(|s| !s.1);
         if info && self.status_at.is_some_and(|t| t.elapsed() >= INFO_FOR) {
@@ -1580,6 +1600,23 @@ mod tests {
             "{all}"
         );
         assert!(!all.contains("was 0.00"), "an unmoved one says nothing");
+    }
+
+    #[test]
+    fn typing_is_kept_within_seconds_without_a_save() {
+        let p = std::env::temp_dir().join(format!("mjev-auto-{}.json", std::process::id()));
+        let mut a = app();
+        a.bind = None; // no health check from tick
+        a.draft_file = Some(p.clone());
+        a.screen = Screen::Ask;
+        typed(&mut a, "typed, never saved");
+        a.kept_at = Some(Instant::now() - AUTOSAVE);
+        a.tick();
+        let mut b = app();
+        b.draft_file = Some(p.clone());
+        assert!(b.restore_draft());
+        assert_eq!(b.state.text(), "typed, never saved");
+        std::fs::remove_file(&p).unwrap();
     }
 
     /// Every screen at every size: rows inside the width, the cursor on

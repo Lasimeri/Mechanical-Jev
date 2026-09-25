@@ -71,8 +71,8 @@ writing JSON:
    each probability that moved says what it was.
 
 The draft is kept between runs (`$XDG_STATE_HOME/mjev/draft.json`, else
-`~/.local/state/mjev/draft.json`), a question that does not validate yet
-included. `F1` lists every key. On a first run with no Intel Phi Jev
+`~/.local/state/mjev/draft.json`), written every few seconds as it
+changes, a question that does not validate yet included. `F1` lists every key. On a first run with no Intel Phi Jev
 built, home says where to build it. Colours are truecolor; `NO_COLOR` turns
 them off (the selected row in reverse video) and `MJEV_COLOR=256` maps
 them to the 256-colour palette for a terminal without truecolor. The plan and its stages are in

@@ -57,8 +57,10 @@ of each card's memory until then.
   as typed, whether it validates yet or not (`Draft::to_saved`), with the
   example it came from, so Jev's numbers come back too. Written
   atomically (a temporary file, then a rename) on each saved question,
-  each ask and on quitting; restored when `mjev tui` opens without
-  `--file`. The tests keep it nowhere (`draft_file` is `None`).
+  each ask, on quitting, and every 5 s while it changes (a closed window
+  or a kill loses at most those seconds of typing); restored when `mjev
+  tui` opens without `--file`. The draft kept is the last one worked on,
+  a `--file` run's included. The tests keep it nowhere (`draft_file` is `None`).
 - **Undo:** `u` puts the draft back as it was before the last delete,
   move (`Alt+↑` `↓`), saved question, load or clear, up to 50 back, with
   the example it came from; the answers stay and show as changed where
