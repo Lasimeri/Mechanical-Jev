@@ -20,9 +20,24 @@ asks.
 ## Start
 
 ```sh
-make build          # mjev
-make query          # starts Intel Phi Jev if it is down, asks examples/query.json
-./target/release/mjev query --state '$ git status' --noul 'ro=Is this command read-only?'
+# the server, cloned next to this checkout (see The repositories)
+git clone https://github.com/Lasimeri/Intel-Phi-Jev ../Intel-Phi-Jev
+make -C ../Intel-Phi-Jev build
+
+make build install  # mjev, linked at ~/.local/bin/mjev (PREFIX= to change; make uninstall)
+mjev                # the TUI; try: e, Enter, F5
+```
+
+The first question starts the server (`xks serve --detach`: it loads the
+model and puts the cards to work, under a minute); after that a question
+takes seconds. Quitting leaves it running, as every command does:
+`mjev stop` ends it and gives the cards their memory back.
+
+From the command line, and for development:
+
+```sh
+mjev query --file examples/query.json --bars   # one request, answers as bars (JSON without --bars)
+mjev query --state '$ git status' --noul 'ro=Is this command read-only?'
 make eval           # the long real sessions, scored
 make closeness      # Jev's published questions asked locally, compared with Jev's answers
 make stop           # stop the server, release the cards
@@ -31,52 +46,44 @@ make evidence       # the reverse engineering's fits, offline
 make check          # docs, format, lint, build, tests
 ```
 
-The server is [Intel Phi Jev](https://github.com/Lasimeri/Intel-Phi-Jev),
-cloned and built (`make build`) next to this checkout; see
-[The repositories](#the-repositories). The first request starts it
-(`xks serve --detach`, which loads the model and puts the cards to work:
-about 45 s); after that a question takes seconds.
-
 ## Use it
 
-```sh
-make install        # a link at ~/.local/bin/mjev (PREFIX= to change); make uninstall removes it
-mjev                # alone, in a terminal: the TUI (also: mjev tui [--file request.json], make tui)
-```
+`mjev` alone, in a terminal, opens the TUI (also `mjev tui [--file
+request.json]` or `make tui`): Jev without writing JSON, themed after
+seaof.glass.
 
-A terminal interface, themed after seaof.glass, for using Jev without
-writing JSON:
+**A first look.** `e` lists TypeSafe's published requests; `Enter` loads
+one, with Jev's published answer under each question; `F5` asks the local
+server (starting it when it is down; the header shows what runs, the
+status row what the server's log says). Each answer is a bar per option
+or level, the chosen one marked `•`, then the confidence, with Jev's
+number beside ours while neither the question nor the state is edited.
 
-1. **ask** (`a` on home): write the state (text, or a JSON object), `Tab`
-   to the questions, `a` to add one. The form takes the kind (`←` `→`:
-   noul, choice, score), an id, the instructions, and the options, one per
-   line (choice: `key` or `key: description`; score: levels, lowest
-   first; noul: optionally `true: ...` and `false: ...`). `Ctrl+S` saves,
-   checked against TypeSafe's limits.
-2. `F5` asks. When Intel Phi Jev's server is down it is started first
-   (a minute or so for the 35B); the header shows what runs.
-3. Each answer shows as bars under its question: every option's or
-   level's probability, the chosen one in full copper, the confidence.
-4. **examples** (`e`): TypeSafe's published requests. One loads into ask
-   with Jev's published answer beside each question. After `F5`, Jev's
-   number stands next to the local one, for as long as neither the
-   question nor the state is edited.
-5. **server** (`s`): state, subject, models; `s` starts, `x` stops and
-   gives the cards back. While the server starts, the status row shows
-   the line its log is on.
-6. On the questions: `l` and `w` load and write request files (which
-   `mjev query --file` takes too; `Tab` completes the path), `r` writes
-   the last answer, `u` undoes a delete, move, save, load or clear,
-   `Alt+↑` `↓` moves a question, `n` twice starts a new draft. Re-asked,
-   each probability that moved says what it was.
+**Your own request.** On **ask** (`a` on home), write the state (text, or
+a JSON object), `Tab` to the questions, `a` to add one: the kind (`←` `→`:
+noul, choice, score), an id, the instructions, and the options, one per
+line (choice: `key` or `key: description`; score: levels, lowest first;
+noul: optionally `true: ...` and `false: ...`). The form checks the
+question as it is typed; `Ctrl+S` saves. `F5` asks; asked again after an
+edit, each probability that moved says what it was.
 
-The draft is kept between runs (`$XDG_STATE_HOME/mjev/draft.json`, else
-`~/.local/state/mjev/draft.json`), written every few seconds as it
-changes, a question that does not validate yet included. `F1` lists every key. On a first run with no Intel Phi Jev
-built, home says where to build it. Colours are truecolor; `NO_COLOR` turns
-them off (the selected row in reverse video) and `MJEV_COLOR=256` maps
-them to the 256-colour palette for a terminal without truecolor. The plan and its stages are in
-[docs/tui.md](docs/tui.md).
+**Around it.**
+
+- On the questions: `Enter` edits, `d` deletes, `Alt+↑` `↓` moves, `u`
+  undoes a delete, move, save, load or clear, `n` twice starts afresh;
+  `l` and `w` load and write request files (the same files `mjev query
+  --file` takes; `Tab` completes a path), `r` writes the last answer.
+- Every text field has the readline keys (`Ctrl+A` `E` `K` `U` `W`, word
+  moves) and `Ctrl+Z` to undo typing.
+- **server** (`s` on home): state, subject, models; `s` starts, `x` stops
+  and gives the cards back. With no Intel Phi Jev built, home and this
+  screen say how to build it.
+- The draft is kept between runs, written every few seconds as it
+  changes (`$XDG_STATE_HOME/mjev/draft.json`, else
+  `~/.local/state/mjev/draft.json`).
+- Colours are truecolor; `NO_COLOR` turns them off (the selected row in
+  reverse video), `MJEV_COLOR=256` maps them to the 256-colour palette.
+- `F1` lists every key. The plan and its stages: [docs/tui.md](docs/tui.md).
 
 ## Commands
 

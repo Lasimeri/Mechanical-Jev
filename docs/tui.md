@@ -16,7 +16,9 @@ mode, keys and escapes, the layout in `src/tui/`. Themed after seaof.glass.
 | 2 | `mjev tui [--file F]` in `src/main.rs`, `make tui` | done |
 | 2 | `phi::{ensure_as, start_as, stop_as}` with `Say::Log`, `Client::health` | done; `xks`'s output in a log, not over the screen |
 | 3 | the README's "Use it" section; a first-run note when no Intel Phi Jev is built | done |
-| polish | wrapping editors; the draft kept between runs; undo; the answer written; a start's progress; the form checked as typed; example details; `mjev` alone opens it; `make install`; `NO_COLOR` and `MJEV_COLOR=256` | done |
+| polish 1 | control characters drawn safely; ids, summaries and keys that fit; wrapping editors (75af1b5 and before) | done |
+| polish 2 | the draft kept between runs, every 5 s while it changes, never lost to `--file` or an idle second TUI; `u` over deletes, moves, saves, loads and clears; the answer written; a start's progress (live on a 35B start); the form checked as typed; example details; `mjev` alone opens it; `make install`; `NO_COLOR` and `MJEV_COLOR=256` | done |
+| polish 3 | readline keys and `Ctrl+Z` in every field; aligned bars, `•` on the choice, a Score's level on its own line; "was" after a re-ask; paths that complete and wrap whole; a changed form kept on one `Esc`; help that scrolls and fits 80 columns; the first run's build hint; `mjev query --bars` | done |
 | next | asked with the server up on the cards, by a person at a real terminal | not yet |
 
 ## The look (seaof.glass)
