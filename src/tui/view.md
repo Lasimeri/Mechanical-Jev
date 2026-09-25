@@ -25,7 +25,11 @@ edit to the instructions or the state changed the reading. A Score's expected le
 - **examples**: TypeSafe's published requests, one row each (ids, kinds,
   the state's first line), where the selected one is from and its note.
 - **server**: address, state, subject, models, which `xks`, where the logs
-  are, and the last lines `xks` wrote.
+  are, and the last lines `xks` wrote; while Intel Phi Jev is not built,
+  how to build it instead. Home shows the same note, its last row
+  pointing here when it does not fit. Long words (paths) are broken
+  across rows, never cut, and a cut error on the status row keeps its
+  "(more on / server)".
 - **help**: the keys, scrolling with `↑` `↓` when they outnumber the rows
   (the rule says which way there is more); a test keeps every row inside
   80 columns.

@@ -2,7 +2,7 @@
 //! colours. Nothing here changes what the app holds but scroll positions.
 //! See view.md.
 
-use super::app::{App, Field, Focus, PromptFor, Screen, MENU};
+use super::app::{App, Field, Focus, PromptFor, Screen, MENU, MORE};
 use super::model::{answer_lines, filled, summary, Kind, Line};
 use super::term::{theme, Frame, Span};
 
@@ -51,20 +51,27 @@ fn chars(t: &str) -> usize {
     t.chars().count()
 }
 
-/// Words into lines of at most `w` characters (a longer word is cut).
+/// Words into lines of at most `w` characters. A word longer than a line
+/// (a path, a URL) is broken across lines, never cut: it may be what the
+/// reader has to copy.
 fn wrap(t: &str, w: usize) -> Vec<String> {
+    let w = w.max(1);
     let mut out = Vec::new();
     for para in t.lines() {
         let mut line = String::new();
         for word in para.split_whitespace() {
-            let word: String = word.chars().take(w.max(1)).collect();
-            if !line.is_empty() && chars(&line) + 1 + chars(&word) > w {
+            if !line.is_empty() && chars(&line) + 1 + chars(word) > w {
                 out.push(std::mem::take(&mut line));
             }
             if !line.is_empty() {
                 line.push(' ');
             }
-            line.push_str(&word);
+            for c in word.chars() {
+                if chars(&line) == w {
+                    out.push(std::mem::take(&mut line));
+                }
+                line.push(c);
+            }
         }
         out.push(line);
     }
@@ -140,7 +147,20 @@ fn footer(f: &mut Frame, a: &App, keys: &[(&str, &str)]) {
                 text(shown.first().cloned().unwrap_or_default()),
             ]
         }
-        (None, Some((s, true))) => vec![pad(1), text(format!("! {s}")).bold()],
+        (None, Some((s, true))) => {
+            // Cut the message, not the pointer to where it is in full.
+            let room = w.saturating_sub(3);
+            let s = match s.strip_suffix(MORE) {
+                Some(head) if chars(s) > room => {
+                    clip(head, room.saturating_sub(chars(MORE)))
+                        .trim_end()
+                        .to_string()
+                        + MORE
+                }
+                _ => s.clone(),
+            };
+            vec![pad(1), text(format!("! {s}")).bold()]
+        }
         // While a start runs, what the server's log says it is doing.
         (None, _) if a.job.is_some() && a.progress.is_some() => vec![
             pad(1),
@@ -256,12 +276,25 @@ fn home(f: &mut Frame, a: &App) {
     y += 1;
     if a.bind.is_some() && !a.xks.is_file() {
         y += 1;
-        for l in wrap(&crate::phi::not_built(&a.xks), cw) {
-            if y + 2 >= h {
-                break;
-            }
+        let note = wrap(&crate::phi::not_built(&a.xks), cw);
+        let room = h.saturating_sub(2).saturating_sub(y);
+        // What fits; when it does not all fit, the last row says where
+        // the whole of it is.
+        let (shown, cut) = if note.len() > room {
+            (room.saturating_sub(1), true)
+        } else {
+            (note.len(), false)
+        };
+        for l in note.into_iter().take(shown) {
             f.set(y as u16, vec![pad(x), dim(l)], theme::BG);
             y += 1;
+        }
+        if cut && room > 0 {
+            f.set(
+                y as u16,
+                vec![pad(x), text("… all of it on / server").italic()],
+                theme::BG,
+            );
         }
     }
     footer(
@@ -739,15 +772,16 @@ fn server(f: &mut Frame, a: &App) {
         y += 1;
     }
     y += 1;
-    f.set(
-        y,
-        rule(1, "last run", w.saturating_sub(2), false),
-        theme::BG,
-    );
+    // Before any run, and while Intel Phi Jev is not built, how to build it.
+    let unbuilt = a.server.log.is_empty() && a.bind.is_some() && !a.xks.is_file();
+    let (label, log) = if unbuilt {
+        ("to build it", crate::phi::not_built(&a.xks))
+    } else {
+        ("last run", a.server.log.clone())
+    };
+    f.set(y, rule(1, label, w.saturating_sub(2), false), theme::BG);
     y += 1;
-    let lines: Vec<String> = a
-        .server
-        .log
+    let lines: Vec<String> = log
         .lines()
         .flat_map(|l| wrap(l, w.saturating_sub(4)))
         .collect();
@@ -860,6 +894,31 @@ fn help(f: &mut Frame, a: &mut App) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_long_word_is_broken_across_lines_not_cut() {
+        let path = "/a/very/long/path/that/must/survive/whole";
+        let lines = super::wrap(&format!("not built at {path} (clone it)"), 10);
+        assert!(lines.iter().all(|l| l.chars().count() <= 10), "{lines:?}");
+        assert!(lines
+            .concat()
+            .replace(' ', "")
+            .contains(&path.replace(' ', "")));
+    }
+
+    #[test]
+    fn a_cut_error_keeps_its_pointer_to_the_server_screen() {
+        let mut a = super::super::app::App::new(crate::client::Client {
+            base: "http://127.0.0.1:9".into(),
+            api_key: None,
+            model: "m".into(),
+            attempts: 1,
+            timeout: std::time::Duration::from_secs(1),
+        });
+        a.status = Some((format!("{}{}", "x".repeat(300), super::MORE), true));
+        let f = super::render(&mut a, 80, 24);
+        assert!(f.row_text(22).ends_with(super::MORE), "{}", f.row_text(22));
+    }
+
     #[test]
     fn every_help_row_fits_80_columns() {
         for (where_, keys, does) in super::KEYS {

@@ -23,6 +23,9 @@ use crate::protocol::{Request, Response};
 const POLL: Duration = Duration::from_millis(100);
 /// How often the local server's health is checked while nothing runs.
 const HEALTH_EVERY: Duration = Duration::from_secs(5);
+/// Ends an error shown in full on the server screen; the status row keeps
+/// it when it has to cut the message.
+pub const MORE: &str = " (more on / server)";
 /// How long an info message stays; an error stays until the next one.
 const INFO_FOR: Duration = Duration::from_secs(8);
 /// How often a changed draft is written while the TUI runs.
@@ -504,7 +507,7 @@ impl App {
         let first = e.lines().next().unwrap_or_default().to_string();
         if e.lines().count() > 1 || first.chars().count() > 100 {
             self.server.log = e;
-            self.status = Some((format!("{first} (more on / server)"), true));
+            self.status = Some((format!("{first}{MORE}"), true));
         } else {
             self.status = Some((first, true));
         }
