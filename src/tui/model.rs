@@ -206,6 +206,19 @@ pub fn structured(s: &str) -> Value {
     Value::String(t.into())
 }
 
+/// One line for a question's instructions: the text's first line; for
+/// structured instructions their `question` field when there is one, else
+/// the structure on one line.
+pub fn summary(instructions: &str) -> String {
+    match structured(instructions) {
+        Value::String(s) => s.lines().next().unwrap_or_default().to_string(),
+        Value::Object(m) if m.get("question").is_some_and(Value::is_string) => {
+            m["question"].as_str().unwrap_or_default().to_string()
+        }
+        v => v.to_string(),
+    }
+}
+
 /// A state as it goes on the wire: a JSON object or array as that
 /// structure, anything else as the text as written (not trimmed).
 pub fn state_value(s: &str) -> Value {
@@ -463,6 +476,16 @@ mod tests {
         assert_eq!(l[2].note, "jev 0.76");
         assert_eq!(filled(0.5, 10), 5);
         assert_eq!(filled(1.7, 10), 10);
+    }
+
+    #[test]
+    fn instructions_summarise_to_one_line() {
+        assert_eq!(summary("first line\nsecond"), "first line");
+        assert_eq!(
+            summary("{\n  \"question\": \"Which topic?\",\n  \"focus\": \"x\"\n}"),
+            "Which topic?"
+        );
+        assert_eq!(summary("{\"focus\": \"x\"}"), "{\"focus\":\"x\"}");
     }
 
     #[test]

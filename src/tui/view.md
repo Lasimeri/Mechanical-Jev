@@ -28,3 +28,9 @@ running job with a spinner on the right) and a footer (the status or a
 file prompt, then the keys). Below 40x10 only "the terminal is too small"
 is drawn. Widths count characters; wide characters (CJK, emoji) are taken
 as one column.
+
+The keys row takes `(key, what)` pairs in order of use and adds them while
+they fit, keeping `f1 help` last, so a narrow terminal drops the least
+used first. A question's row sizes its id column from the longest id (up
+to 24, cut with `…`) and shows its instructions as one line
+(`model::summary`: a structured instruction's `question` field).

@@ -8,4 +8,5 @@ scrolls so the cursor stays inside the view and returns what to draw;
 editor (a question's id, a file path) ignores newlines
 and turns a pasted one into a space. No terminal here, so it is tested
 directly: joining and splitting lines, the single-line rule, the view
-following the cursor.
+following the cursor. `to_start` puts the cursor and the view at the top, so a
+loaded state reads from its beginning.

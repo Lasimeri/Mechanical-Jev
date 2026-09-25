@@ -51,6 +51,15 @@ impl Editor {
         self.left = 0;
     }
 
+    /// The cursor to the very start, the view with it (a loaded text reads
+    /// from its top).
+    pub fn to_start(&mut self) {
+        self.row = 0;
+        self.col = 0;
+        self.top = 0;
+        self.left = 0;
+    }
+
     pub fn text(&self) -> String {
         self.lines
             .iter()

@@ -3,7 +3,7 @@
 //! See view.md.
 
 use super::app::{App, Field, Focus, PromptFor, Screen, MENU};
-use super::model::{answer_lines, filled, Kind, Line};
+use super::model::{answer_lines, filled, summary, Kind, Line};
 use super::term::{theme, Frame, Span};
 
 const SPIN: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -120,7 +120,7 @@ fn header(f: &mut Frame, a: &App, title: &str) {
 }
 
 /// The last two rows: the status (or the prompt) and the keys.
-fn footer(f: &mut Frame, a: &App, keys: &str) {
+fn footer(f: &mut Frame, a: &App, keys: &[(&str, &str)]) {
     let h = f.height;
     let w = f.width as usize;
     let status = match (&a.prompt, &a.status) {
@@ -145,11 +145,33 @@ fn footer(f: &mut Frame, a: &App, keys: &str) {
     };
     f.set(h - 2, status, theme::BG);
     let keys = if a.prompt.is_some() {
-        "enter: go · esc: cancel"
+        &[("enter", "go"), ("esc", "cancel")][..]
     } else {
         keys
     };
-    f.set(h - 1, vec![pad(1), dim(keys)], theme::BG);
+    f.set(h - 1, keys_row(keys, w), theme::BG);
+}
+
+/// The keys row: `(key, what)` pairs in order while they fit, `f1 help`
+/// kept at the end, so a narrow terminal loses the least used first.
+fn keys_row(keys: &[(&str, &str)], w: usize) -> Vec<Span> {
+    let last = " · f1 help";
+    let mut out = vec![pad(1)];
+    let mut used = 1;
+    for (i, (k, what)) in keys.iter().enumerate() {
+        let sep = if i == 0 { "" } else { " · " };
+        let n = chars(sep) + chars(k) + 1 + chars(what);
+        if used + n + chars(last) > w {
+            break;
+        }
+        out.push(faint(sep));
+        out.push(text(*k));
+        out.push(dim(format!(" {what}")));
+        used += n;
+    }
+    let sep = if used > 1 { " · " } else { "" };
+    out.extend([faint(sep), text("f1"), dim(" help")]);
+    out
 }
 
 pub fn render(a: &mut App, w: u16, h: u16) -> Frame {
@@ -235,7 +257,15 @@ fn home(f: &mut Frame, a: &App) {
             y += 1;
         }
     }
-    footer(f, a, "↑ ↓ enter, or a e s h q · f1 help · ctrl+q quits");
+    footer(
+        f,
+        a,
+        &[
+            ("↑ ↓ enter", "choose"),
+            ("a e s h q", "jump"),
+            ("ctrl+q", "quit"),
+        ],
+    );
 }
 
 /// The rows of the question list: spans, the colour under them, and the
@@ -243,16 +273,24 @@ fn home(f: &mut Frame, a: &App) {
 fn question_rows(a: &App, w: usize) -> Vec<(Vec<Span>, bool, usize)> {
     let mut rows = Vec::new();
     let lit = a.focus == Focus::Questions;
+    let idw = a
+        .questions
+        .iter()
+        .map(|q| chars(&q.id))
+        .max()
+        .unwrap_or(0)
+        .clamp(4, 24);
     for (i, q) in a.questions.iter().enumerate() {
         let sel = i == a.q_sel;
-        let first = q.instructions.lines().next().unwrap_or_default();
         rows.push((
             vec![
                 pad(1),
                 text(if sel && lit { "› " } else { "  " }),
-                text(cell(&q.id, 14)).bold(),
-                dim(cell(q.kind.name(), 8)),
-                text(first.to_string()),
+                text(clip(&q.id, idw)).bold(),
+                pad(2),
+                dim(cell(q.kind.name(), 6)),
+                pad(2),
+                text(summary(&q.instructions)),
             ],
             sel && lit,
             i,
@@ -380,11 +418,19 @@ fn ask(f: &mut Frame, a: &mut App) {
         let bg = if sel { theme::SURFACE } else { theme::BG };
         f.set((list_top + r) as u16, spans, bg);
     }
-    let keys = match a.focus {
-        Focus::State => "tab: questions · f5 or ctrl+s: ask · esc: home · f1: help",
-        Focus::Questions => {
-            "a add · enter edit · d delete · l load · w write · x examples · f5 ask · tab state"
-        }
+    let keys: &[(&str, &str)] = match a.focus {
+        Focus::State => &[("f5", "ask"), ("tab", "questions"), ("esc", "home")],
+        Focus::Questions => &[
+            ("f5", "ask"),
+            ("a", "add"),
+            ("enter", "edit"),
+            ("d", "delete"),
+            ("x", "examples"),
+            ("tab", "state"),
+            ("l", "load"),
+            ("w", "write"),
+            ("esc", "home"),
+        ],
     };
     footer(f, a, keys);
 }
@@ -397,7 +443,7 @@ fn form(f: &mut Frame, a: &mut App) {
     };
     header(f, a, title);
     let Some(fm) = a.form.as_mut() else {
-        return footer(f, a, "esc: back");
+        return footer(f, a, &[("esc", "back")]);
     };
     f.set(
         1,
@@ -469,7 +515,12 @@ fn form(f: &mut Frame, a: &mut App) {
     footer(
         f,
         a,
-        "tab: next field · ← →: kind · ctrl+s or f2: save · esc: cancel",
+        &[
+            ("ctrl+s", "save"),
+            ("tab", "next field"),
+            ("← →", "kind"),
+            ("esc", "cancel"),
+        ],
     );
 }
 
@@ -548,7 +599,15 @@ fn examples(f: &mut Frame, a: &App) {
             f.set((y + 2 + r) as u16, vec![pad(2), text(l)], theme::BG);
         }
     }
-    footer(f, a, "↑ ↓ · enter: load into ask · esc: home");
+    footer(
+        f,
+        a,
+        &[
+            ("enter", "load into ask"),
+            ("↑ ↓", "choose"),
+            ("esc", "home"),
+        ],
+    );
 }
 
 fn server(f: &mut Frame, a: &App) {
@@ -615,7 +674,12 @@ fn server(f: &mut Frame, a: &App) {
     footer(
         f,
         a,
-        "s: start · x: stop (gives the cards back) · r: refresh · esc: home",
+        &[
+            ("s", "start"),
+            ("x", "stop, the cards back"),
+            ("r", "refresh"),
+            ("esc", "home"),
+        ],
     );
 }
 
@@ -663,5 +727,5 @@ fn help(f: &mut Frame, a: &App) {
             theme::BG,
         );
     }
-    footer(f, a, "esc: back");
+    footer(f, a, &[("esc", "back")]);
 }

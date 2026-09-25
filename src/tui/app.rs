@@ -558,6 +558,7 @@ impl App {
 
     fn set_draft(&mut self, d: Draft) {
         self.state.set_text(&d.state);
+        self.state.to_start();
         self.questions = d.questions;
         self.q_sel = 0;
         self.q_top = 0;
@@ -1008,11 +1009,9 @@ mod tests {
         assert!(a.jev_for(0).is_some());
     }
 
-    #[test]
-    fn every_screen_fits_every_size() {
-        let mut a = app();
-        a.load_example(a.examples.len() - 1);
-        a.server.log = "a\nb\nc".into();
+    /// Every screen at every size: rows inside the width, the cursor on
+    /// screen, no control character reaching the terminal.
+    fn fits(a: &mut App, what: &str) {
         for &(w, h) in &[(20, 5), (40, 10), (80, 24), (200, 60)] {
             for s in [
                 Screen::Home,
@@ -1023,18 +1022,53 @@ mod tests {
                 Screen::Help,
             ] {
                 a.screen = s;
-                if s == Screen::Form {
+                if s == Screen::Form && !a.questions.is_empty() {
                     a.open_form(Some(0));
                 }
-                let f = view::render(&mut a, w, h);
+                let f = view::render(a, w, h);
                 assert_eq!(f.rows.len(), h as usize);
                 for r in 0..h as usize {
-                    assert!(f.row_width(r) <= w as usize, "{s:?} {w}x{h} row {r}");
+                    assert!(
+                        f.row_width(r) <= w as usize,
+                        "{what}: {s:?} {w}x{h} row {r}"
+                    );
+                    assert!(
+                        !f.row_text(r).chars().any(char::is_control),
+                        "{what}: {s:?} {w}x{h} row {r}: {:?}",
+                        f.row_text(r)
+                    );
                 }
                 if let Some((x, y)) = f.cursor {
-                    assert!(x < w && y < h, "{s:?} {w}x{h} cursor {x},{y}");
+                    assert!(x < w && y < h, "{what}: {s:?} {w}x{h} cursor {x},{y}");
                 }
             }
         }
+    }
+
+    #[test]
+    fn every_screen_fits_every_size() {
+        let mut a = app();
+        a.load_example(a.examples.len() - 1);
+        a.server.log = "a\nb\nc".into();
+        fits(&mut a, "an example");
+
+        let mut a = app();
+        let structured = a
+            .examples
+            .iter()
+            .position(|e| !e.request.state.is_string())
+            .expect("a structured example");
+        a.load_example(structured);
+        a.job = Some((Job::Starting, "starting".into(), Instant::now()));
+        a.status = Some(("very long error ".repeat(40), true));
+        fits(&mut a, "structured, a job, a long error");
+
+        let mut a = app();
+        a.screen = Screen::Ask;
+        a.state
+            .insert_str(&"a paragraph of words going on and on ".repeat(30));
+        a.state.insert_str("a\tb\x1b[31mc\r\n");
+        a.ask_path(PromptFor::Write);
+        fits(&mut a, "a long state with control characters, a prompt");
     }
 }

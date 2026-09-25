@@ -127,12 +127,27 @@ impl Frame {
     }
 
     /// Set row `r` (ignored past the bottom), cut to the frame's width.
+    /// Control characters (a loaded file's tabs, a log's `\r`, an escape
+    /// sequence in an error) would move the terminal's cursor or change
+    /// its colours, so each is drawn as one cell: a space for whitespace,
+    /// `�` for anything else.
     pub fn set(&mut self, r: u16, spans: Vec<Span>, bg: Color) {
         let mut left = self.width as usize;
         let mut kept = Vec::with_capacity(spans.len());
         for mut s in spans {
             if left == 0 {
                 break;
+            }
+            if s.text.chars().any(char::is_control) {
+                s.text = s
+                    .text
+                    .chars()
+                    .map(|c| match c {
+                        '\t' | '\r' | '\n' => ' ',
+                        c if c.is_control() => '\u{FFFD}',
+                        c => c,
+                    })
+                    .collect();
             }
             let n = s.text.chars().count();
             if n > left {

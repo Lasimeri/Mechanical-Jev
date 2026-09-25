@@ -16,6 +16,9 @@ structure and anything else as trimmed text; `state_value` does the same
 for the state but keeps text as written. Loading shows a structured
 instruction pretty-printed and a structured description or level compact,
 on its one line. A Choice key cannot contain `:` (the first `:` ends it).
+`summary` gives a question's instructions as one line for the list: the
+first line of text, a structured instruction's `question` field, else the
+structure compact.
 
 What the TUI shows: `answer_lines` turns one answer into lines of label,
 probability and note: a Noul's p(yes); each option of a Choice in the

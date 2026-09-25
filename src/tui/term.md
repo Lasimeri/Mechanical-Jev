@@ -29,3 +29,8 @@ The palette is seaof.glass's, from the `:root` of its `index.html`
 Truecolor escapes; `crossterm` for raw mode, keys, bracketed paste and the
 escape sequences, and no widget library (by the user's direction, not
 ratatui).
+
+`set` also draws every control character as one cell (a space for a tab,
+`\r` or `\n`, `�` for the rest): a loaded file's tab, a log's carriage
+return or an escape sequence inside an error would otherwise move the
+terminal's cursor or change its colours and tear the frame.
