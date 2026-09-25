@@ -41,6 +41,58 @@ pub fn draft_path() -> PathBuf {
         .join("draft.json")
 }
 
+/// A typed path with a leading `~` as the home directory.
+pub fn expand_home(p: &str) -> PathBuf {
+    match p.strip_prefix('~') {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => {
+            let home = std::env::var_os("HOME").unwrap_or_default();
+            PathBuf::from(format!("{}{rest}", Path::new(&home).display()))
+        }
+        _ => PathBuf::from(p),
+    }
+}
+
+/// `Tab` in the path prompt: the typed path completed as far as the
+/// entries that match agree (a directory gets its `/`), and those entries
+/// when more than one does (hidden ones only for a typed `.`).
+pub fn complete(typed: &str) -> (String, Vec<String>) {
+    let (dir, prefix) = match typed.rfind('/') {
+        Some(i) => typed.split_at(i + 1),
+        None => ("", typed),
+    };
+    let listed = expand_home(if dir.is_empty() { "." } else { dir });
+    let mut names: Vec<(String, bool)> = std::fs::read_dir(&listed)
+        .map(|rd| {
+            rd.filter_map(Result::ok)
+                .filter_map(|e| {
+                    let n = e.file_name().into_string().ok()?;
+                    let hidden_ok = !n.starts_with('.') || prefix.starts_with('.');
+                    (n.starts_with(prefix) && hidden_ok).then(|| (n, e.path().is_dir()))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    names.sort();
+    let Some((first, _)) = names.first() else {
+        return (typed.to_string(), Vec::new());
+    };
+    let common: String = first
+        .chars()
+        .enumerate()
+        .take_while(|&(i, c)| names.iter().all(|(n, _)| n.chars().nth(i) == Some(c)))
+        .map(|(_, c)| c)
+        .collect();
+    let mut done = format!("{dir}{common}");
+    if names.len() == 1 && names[0].1 {
+        done.push('/');
+    }
+    let shown = names
+        .iter()
+        .map(|(n, d)| if *d { format!("{n}/") } else { n.clone() })
+        .collect();
+    (done, shown)
+}
+
 /// The last line of `p` when it was written after `since`: what a starting
 /// server is doing. Only the file's tail is read, and a line rewritten with
 /// `\r` (a progress count) shows as its latest text.
@@ -126,6 +178,11 @@ pub struct Form {
     pub field: Field,
     /// The question's index when editing one; `None` for a new one.
     pub editing: Option<usize>,
+    /// The question as the form opened, to tell whether `Esc` would lose
+    /// anything.
+    original: QDraft,
+    /// A first `Esc` over changes, waiting for the second.
+    discard_armed: Option<Instant>,
 }
 
 impl Form {
@@ -141,6 +198,8 @@ impl Form {
                 Field::Kind
             },
             editing,
+            original: q.clone(),
+            discard_armed: None,
         }
     }
 
@@ -400,7 +459,7 @@ impl App {
     fn fail(&mut self, e: impl Into<String>) {
         let e = e.into();
         let first = e.lines().next().unwrap_or_default().to_string();
-        if e.lines().count() > 1 {
+        if e.lines().count() > 1 || first.chars().count() > 100 {
             self.server.log = e;
             self.status = Some((format!("{first} (more on / server)"), true));
         } else {
@@ -559,8 +618,17 @@ impl App {
         };
         match k.code {
             KeyCode::Esc => {
-                self.form = None;
-                self.screen = Screen::Ask;
+                // Changes are not thrown away on one key.
+                let armed = form
+                    .discard_armed
+                    .is_some_and(|t| t.elapsed() < CONFIRM_FOR);
+                if form.draft() == form.original || armed {
+                    self.form = None;
+                    self.screen = Screen::Ask;
+                } else {
+                    form.discard_armed = Some(Instant::now());
+                    self.fail("esc again discards the changes; ctrl+s saves them");
+                }
             }
             KeyCode::F(2) => self.save(),
             KeyCode::Char('s') if ctrl => self.save(),
@@ -679,17 +747,25 @@ impl App {
         };
         match k.code {
             KeyCode::Esc => self.prompt = None,
+            KeyCode::Tab => {
+                let (done, choices) = complete(&p.path.text());
+                p.path.set_text(&done);
+                if choices.len() > 1 {
+                    self.info(choices.join("  "));
+                }
+            }
             KeyCode::Enter => {
-                let (what, path) = (p.what, p.path.text().trim().to_string());
+                let (what, typed) = (p.what, p.path.text().trim().to_string());
                 self.prompt = None;
-                if path.is_empty() {
+                if typed.is_empty() {
                     return;
                 }
-                self.last_path = path.clone();
+                self.last_path = typed.clone();
+                let path = expand_home(&typed);
                 match what {
-                    PromptFor::Load => self.load_file(Path::new(&path)),
-                    PromptFor::Write => self.write_file(Path::new(&path)),
-                    PromptFor::Answer => self.write_answer(Path::new(&path)),
+                    PromptFor::Load => self.load_file(&path),
+                    PromptFor::Write => self.write_file(&path),
+                    PromptFor::Answer => self.write_answer(&path),
                 }
             }
             _ => {
@@ -1214,6 +1290,7 @@ mod tests {
         assert_eq!(a.screen, Screen::Form);
         assert!(a.status.as_ref().is_some_and(|s| s.1));
         press(&mut a, KeyCode::Esc);
+        press(&mut a, KeyCode::Esc); // changes: a second esc discards
         assert_eq!((a.screen, a.questions.len()), (Screen::Ask, 0));
     }
 
@@ -1296,6 +1373,56 @@ mod tests {
         a.status_at = Some(Instant::now() - INFO_FOR);
         a.tick();
         assert!(a.status.is_some());
+    }
+
+    #[test]
+    fn paths_complete_on_tab_and_take_a_tilde() {
+        let d = std::env::temp_dir().join(format!("mjev-complete-{}", std::process::id()));
+        std::fs::create_dir_all(d.join("reqs")).unwrap();
+        std::fs::write(d.join("req-a.json"), "").unwrap();
+        std::fs::write(d.join("req-b.json"), "").unwrap();
+        let base = format!("{}/", d.display());
+        let (done, all) = complete(&format!("{base}req"));
+        assert_eq!((done, all.len()), (format!("{base}req"), 3));
+        let (done, all) = complete(&format!("{base}req-"));
+        assert_eq!(
+            (done, all),
+            (
+                format!("{base}req-"),
+                vec!["req-a.json".to_string(), "req-b.json".into()]
+            )
+        );
+        assert_eq!(
+            complete(&format!("{base}req-a")).0,
+            format!("{base}req-a.json")
+        );
+        assert_eq!(complete(&format!("{base}reqs")).0, format!("{base}reqs/"));
+        assert_eq!(complete(&format!("{base}zzz")).1.len(), 0);
+        std::fs::remove_dir_all(&d).unwrap();
+        let home = std::env::var("HOME").unwrap();
+        assert_eq!(
+            expand_home("~/x.json"),
+            PathBuf::from(format!("{home}/x.json"))
+        );
+        assert_eq!(expand_home("~other/x"), PathBuf::from("~other/x"));
+    }
+
+    #[test]
+    fn a_changed_form_takes_a_second_esc() {
+        let mut a = app();
+        a.screen = Screen::Ask;
+        a.focus = Focus::Questions;
+        press(&mut a, KeyCode::Char('a'));
+        press(&mut a, KeyCode::Esc); // nothing typed: closes at once
+        assert_eq!(a.screen, Screen::Ask);
+        press(&mut a, KeyCode::Char('a'));
+        press(&mut a, KeyCode::Tab);
+        press(&mut a, KeyCode::Tab);
+        typed(&mut a, "half a question");
+        press(&mut a, KeyCode::Esc);
+        assert_eq!(a.screen, Screen::Form);
+        press(&mut a, KeyCode::Esc);
+        assert_eq!((a.screen, a.questions.len()), (Screen::Ask, 0));
     }
 
     /// Every screen at every size: rows inside the width, the cursor on

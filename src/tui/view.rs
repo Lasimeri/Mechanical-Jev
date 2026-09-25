@@ -392,6 +392,10 @@ fn ask(f: &mut Frame, a: &mut App) {
             asked.response.model,
             asked.took.as_secs_f64()
         );
+        let read = asked.response.usage.input_tokens;
+        if read > 0 {
+            label.push_str(&format!(" · {read} tokens read"));
+        }
     }
     f.set(
         top as u16,
@@ -752,7 +756,16 @@ const KEYS: &[(&str, &str, &str)] = &[
     ("ask, questions", "x", "examples"),
     ("form", "tab, shift+tab", "next, previous field"),
     ("form", "← →, or n c s", "the kind: noul, choice, score"),
-    ("form", "ctrl+s, f2", "save (checked first)"),
+    (
+        "form",
+        "ctrl+s, f2",
+        "save (checked first); esc twice drops changes",
+    ),
+    (
+        "a file prompt",
+        "tab, ~/",
+        "complete the path; the home directory",
+    ),
     (
         "server",
         "s  x  r",

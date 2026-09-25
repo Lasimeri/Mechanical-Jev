@@ -71,3 +71,12 @@ of each card's memory until then.
   tail every half second, a line rewritten with `\r` as its latest text,
   and only once the log is newer than the start (before that it is the
   previous run's).
+- **Paths:** the file prompt takes `~/` for the home directory, and `Tab`
+  completes as far as the matching entries agree (a directory gets its
+  `/`), listing them when more than one matches; hidden entries only
+  after a typed `.`.
+- **The form:** `Esc` closes it at once when nothing changed; over
+  changes it takes a second `Esc`, and says `Ctrl+S` saves them.
+- **Long errors:** one of more than one line, or longer than 100
+  characters, shows in full on the server screen; its first line stays
+  on the status row.

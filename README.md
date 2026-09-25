@@ -65,8 +65,9 @@ writing JSON:
    gives the cards back. While the server starts, the status row shows
    the line its log is on.
 6. On the questions: `l` and `w` load and write request files (which
-   `mjev query --file` takes too), `r` writes the last answer, `u` brings
-   back a deleted question, `n` twice starts a new draft.
+   `mjev query --file` takes too; `Tab` completes the path), `r` writes
+   the last answer, `u` brings back a deleted question, `n` twice starts
+   a new draft.
 
 The draft is kept between runs (`$XDG_STATE_HOME/mjev/draft.json`, else
 `~/.local/state/mjev/draft.json`), a question that does not validate yet

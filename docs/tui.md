@@ -72,7 +72,8 @@ filled cells `█`, copper for the chosen option and `#7a5c38` (the site's
 | form | `Tab`, `Shift+Tab` | next, previous field |
 | form, on the kind | `←` `→` or space; `n` `c` `s` | noul, choice, score |
 | form | `Enter` on the kind or the id | next field |
-| form | `Ctrl+S`, `F2` | save; `Esc` cancels |
+| form | `Ctrl+S`, `F2` | save; `Esc` cancels (twice over changes) |
+| a file prompt | `Tab`; `~/` | complete the path; the home directory |
 | server | `s` start; `x` stop; `r` refresh | the server |
 
 ## How it runs

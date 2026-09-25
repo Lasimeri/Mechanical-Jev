@@ -40,3 +40,5 @@ The form checks the question as it is typed, the way saving will ("ready:
 selected request in full under the list: where it is from, its note and
 each question with its kind and instructions. While a start runs, the
 status row shows the server log's latest line.
+After an answer the questions' rule says which model answered, how long
+it took and how many tokens the server read.
