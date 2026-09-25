@@ -9,7 +9,9 @@ each kept whole with the page it was published on.
 | [`published_pairs.json`](published_pairs.json) | the thirteen complete request and response pairs printed in TypeSafe's documentation, with their `usage` counts, in the documentation's own key order (the order is evidence: the input fit is 2.0 tokens rms in it and 2.5 in alphabetical order) |
 | [`invariants.json`](invariants.json) | the two examples of the documentation's page on jaggedness, with the note that says what each shows |
 
-The rules this archive keeps:
+The rules this archive keeps, which are the Revelation's last (22:18 to 19:
+"If any man shall add unto these things ... if any man shall take away
+from the words of the book"):
 
 - Only what was published. Nothing here came from calling Jev or any other
   API; nothing is paraphrased, rounded or completed.

@@ -125,3 +125,16 @@ Jev's local subject with lettered options, the docs' option order and three
 rotations averaged makes the same decision as Jev on all 28 published
 questions; the details, and why Jev's own input layout does worse on an
 untrained model, are in the report's last section.
+
+## The foundation
+
+The family's names stand on the Revelation to John (Intel Phi Jev's
+README, Naming: "a wise man, which built his house upon a rock", Matthew
+7:24). Here it is closer than a name. The book calls itself an
+*apokalypsis*, an unveiling (1:1), and that is what
+[`docs/reverse-engineering.md`](docs/reverse-engineering.md) does: Jev
+unveiled from what TypeSafe chose to publish, without calling it. And the
+evidence it stands on is kept by the book's last rule, "If any man shall
+add unto these things ... if any man shall take away from the words of
+the book" (22:18 to 19): nothing added to what was published, nothing
+taken away ([`evidence/README.md`](evidence/README.md)).

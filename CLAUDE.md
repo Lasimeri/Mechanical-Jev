@@ -8,6 +8,10 @@ Read `CONTRIBUTING.md` first; it is the authority. The non-obvious rules:
   No inference. The server is Intel-Phi-Jev's `xks`, started on demand and
   found by `MJEV_XKS`, `xks` on PATH, a checkout next to this one or in
   `$HOME`, under either name.
+- Names stand on the Revelation to John, the family's foundation (Intel
+  Phi Jev's README, Naming); here the reverse engineering is its
+  *apokalypsis* and `evidence/` keeps its last rule (22:18 to 19): nothing
+  added to what was published, nothing taken away.
 - The spec is docs.typesafe.ai and TypeSafe's MIT `system-one-adapter`;
   unofficial Jev sites (jevai.net and the like) are not. The reverse
   engineering uses the published documentation only: never call Jev or any
