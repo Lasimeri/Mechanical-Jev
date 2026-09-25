@@ -132,6 +132,18 @@ pub fn log_path() -> PathBuf {
         .join("xks.log")
 }
 
+/// Intel Phi Jev's detached server's own log, which `xks serve --detach`
+/// writes afresh at each start: `$XDG_RUNTIME_DIR/xks/serve.log`, else in
+/// the temporary directory (xks's `run_dir`). The TUI shows its last line
+/// as a start's progress.
+pub fn serve_log() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("xks")
+        .join("serve.log")
+}
+
 /// The last `n` lines of the log.
 fn log_tail(n: usize) -> String {
     let text = std::fs::read_to_string(log_path()).unwrap_or_default();

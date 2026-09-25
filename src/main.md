@@ -2,7 +2,9 @@
 
 Loads defaults ([`config.rs`](config.md)), then `query`, `eval`,
 `corroborate`, `models`, `reconstruct`, `evidence`, `serve`, `stop` or
-`tui`. Every command that talks to the server first makes sure it
+`tui`; `mjev` alone is `tui` when stdin and stdout are a terminal, and
+elsewhere the usage error it always was (exit 2). Every command that
+talks to the server first makes sure it
 answers, starting Intel Phi Jev's server on this machine when it is down
 ([`phi.rs`](phi.md)); `tui` ([`tui/app.rs`](tui/app.md)) starts nothing up
 front and starts the server when it is asked to (`--file` opens a request

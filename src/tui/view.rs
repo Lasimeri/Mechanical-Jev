@@ -127,7 +127,8 @@ fn footer(f: &mut Frame, a: &App, keys: &[(&str, &str)]) {
         (Some(p), _) => {
             let label = match p.what {
                 PromptFor::Load => " load from: ",
-                PromptFor::Write => " write to: ",
+                PromptFor::Write => " write the request to: ",
+                PromptFor::Answer => " write the answer to: ",
             };
             let mut ed = p.path.clone();
             let lw = chars(label);
@@ -140,6 +141,12 @@ fn footer(f: &mut Frame, a: &App, keys: &[(&str, &str)]) {
             ]
         }
         (None, Some((s, true))) => vec![pad(1), text(format!("! {s}")).bold()],
+        // While a start runs, what the server's log says it is doing.
+        (None, _) if a.job.is_some() && a.progress.is_some() => vec![
+            pad(1),
+            faint("› "),
+            dim(a.progress.clone().unwrap_or_default()).italic(),
+        ],
         (None, Some((s, false))) => vec![pad(1), dim(s.clone())],
         (None, None) => vec![],
     };
@@ -429,6 +436,9 @@ fn ask(f: &mut Frame, a: &mut App) {
             ("tab", "state"),
             ("l", "load"),
             ("w", "write"),
+            ("r", "write the answer"),
+            ("u", "undo delete"),
+            ("n", "new draft"),
             ("esc", "home"),
         ],
     };
@@ -499,10 +509,22 @@ fn form(f: &mut Frame, a: &mut App) {
     let mut ol = label("options", fm.field == Field::Options);
     ol.push(dim(fm.kind.options_hint()).italic());
     f.set(oy as u16, ol, theme::BG);
-    let oh = (h - 2).saturating_sub(oy + 1).max(1);
+    let oh = (h - 3).saturating_sub(oy + 1).max(1);
     for (r, l) in fm.options.visible(ew, oh).into_iter().enumerate() {
         f.set((oy + 1 + r) as u16, vec![pad(1 + lw), text(l)], theme::BG);
     }
+    // The question checked as it is typed, the way saving will check it.
+    let q = fm.draft();
+    let n = q.options.lines().filter(|l| !l.trim().is_empty()).count();
+    let check = match (q.to_value(), q.kind) {
+        (Ok(_), Kind::Noul) if n == 0 => text("ready: a noul"),
+        (Ok(_), Kind::Noul) => text("ready: a noul, with what yes and no mean"),
+        (Ok(_), Kind::Choice) if n == 1 => text("ready: 1 option"),
+        (Ok(_), Kind::Choice) => text(format!("ready: {n} options")),
+        (Ok(_), Kind::Score) => text(format!("ready: {n} levels, 0 to {}", n - 1)),
+        (Err(e), _) => dim(format!("not yet: {e}")),
+    };
+    f.set((h - 3) as u16, vec![pad(1 + lw), check.italic()], theme::BG);
     if fm.field == Field::Options {
         let (cy, cx) = fm.options.cursor_on_screen();
         cursor = Some((1 + lw + cx, oy + 1 + cy));
@@ -537,7 +559,37 @@ fn examples(f: &mut Frame, a: &App) {
         ),
         theme::BG,
     );
-    let detail_h = 4;
+    // The selected request in full: where it is from, its note, its
+    // questions.
+    let detail: Vec<Vec<Span>> = a
+        .examples
+        .get(a.ex_sel)
+        .map(|e| {
+            let mut d = vec![vec![pad(2), dim(e.source.clone())]];
+            d.extend(
+                wrap(&e.note, w.saturating_sub(4))
+                    .into_iter()
+                    .take(2)
+                    .map(|l| vec![pad(2), text(l)]),
+            );
+            for (id, q) in &e.request.questions {
+                let instr = match &q["instructions"] {
+                    serde_json::Value::String(s) => s.clone(),
+                    v => v.to_string(),
+                };
+                d.push(vec![
+                    pad(2),
+                    text(clip(id, 20)).bold(),
+                    pad(2),
+                    dim(cell(q["type"].as_str().unwrap_or_default(), 6)),
+                    pad(2),
+                    text(summary(&instr)),
+                ]);
+            }
+            d
+        })
+        .unwrap_or_default();
+    let detail_h = (detail.len() + 1).min((h - 4) / 2);
     let list_top = 2;
     let list_h = (h - 2).saturating_sub(list_top + detail_h).max(1);
     let top = a.ex_sel.saturating_sub(list_h - 1);
@@ -579,24 +631,15 @@ fn examples(f: &mut Frame, a: &App) {
             bg,
         );
     }
-    if let Some(e) = a.examples.get(a.ex_sel) {
+    if detail_h > 0 {
         let y = h - 2 - detail_h;
         f.set(
             y as u16,
-            rule(1, "from", w.saturating_sub(2), false),
+            rule(1, "the request", w.saturating_sub(2), false),
             theme::BG,
         );
-        f.set(
-            (y + 1) as u16,
-            vec![pad(2), dim(e.source.clone())],
-            theme::BG,
-        );
-        for (r, l) in wrap(&e.note, w.saturating_sub(4))
-            .into_iter()
-            .take(2)
-            .enumerate()
-        {
-            f.set((y + 2 + r) as u16, vec![pad(2), text(l)], theme::BG);
+        for (r, row) in detail.into_iter().take(detail_h - 1).enumerate() {
+            f.set((y + 1 + r) as u16, row, theme::BG);
         }
     }
     footer(
@@ -645,7 +688,7 @@ fn server(f: &mut Frame, a: &App) {
             },
         ),
         ("xks", format!("{} ({built})", a.xks.display())),
-        ("server log", "$XDG_RUNTIME_DIR/xks/serve.log".into()),
+        ("server log", crate::phi::serve_log().display().to_string()),
         ("xks said", crate::phi::log_path().display().to_string()),
     ];
     let mut y = 2;
@@ -684,8 +727,12 @@ fn server(f: &mut Frame, a: &App) {
 }
 
 /// Where, keys, what they do.
-const KEYS: [(&str, &str, &str); 16] = [
-    ("anywhere", "ctrl+c, ctrl+q", "quit"),
+const KEYS: &[(&str, &str, &str)] = &[
+    (
+        "anywhere",
+        "ctrl+c, ctrl+q",
+        "quit (twice while a job runs); the draft is kept",
+    ),
     ("anywhere", "f1", "help; esc goes back"),
     ("anywhere", "esc", "back (a form: cancel)"),
     ("home", "↑ ↓ enter", "choose"),
@@ -700,6 +747,8 @@ const KEYS: [(&str, &str, &str); 16] = [
     ("ask, questions", "↑ ↓", "choose a question"),
     ("ask, questions", "a  enter or e  d", "add, edit, delete"),
     ("ask, questions", "l  w", "load or write a request file"),
+    ("ask, questions", "r", "write the last answer to a file"),
+    ("ask, questions", "u  n n", "undo a delete; a new draft"),
     ("ask, questions", "x", "examples"),
     ("form", "tab, shift+tab", "next, previous field"),
     ("form", "← →, or n c s", "the kind: noul, choice, score"),

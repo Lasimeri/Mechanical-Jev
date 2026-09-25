@@ -21,6 +21,9 @@ not a pipe, so a process `xks` leaves running (the server, anything the
 card scripts start) cannot hold the call open. `ensure`, `start` and
 `stop` are those with `Say::Terminal`, unchanged. `not_built` is the "not
 built" message, which the TUI's home screen shows on a first run.
+`serve_log` is where xks's detached server writes its own log
+(`$XDG_RUNTIME_DIR/xks/serve.log`, xks's `run_dir`); the TUI shows its last
+line while a start runs.
 
 Measured 2026-09-24, from a stopped server: `mjev query` of
 examples/query.json took 47 s end to end (start, weight upload to the

@@ -16,6 +16,8 @@ structure and anything else as trimmed text; `state_value` does the same
 for the state but keeps text as written. Loading shows a structured
 instruction pretty-printed and a structured description or level compact,
 on its one line. A Choice key cannot contain `:` (the first `:` ends it).
+`to_saved` and `from_saved` are the draft as kept between runs: every
+field as typed, so a draft that does not validate yet survives a restart.
 `summary` gives a question's instructions as one line for the list: the
 first line of text, a structured instruction's `question` field, else the
 structure compact.

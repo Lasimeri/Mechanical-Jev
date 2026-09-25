@@ -49,3 +49,25 @@ The server keeps running, as it does after any `mjev` command. When it
 was up at the last check, a line on exit (after the terminal is restored)
 says so and that `mjev stop` ends it: on the cards site it holds 4.7 GiB
 of each card's memory until then.
+
+## Kept, undone, confirmed
+
+- **The draft** is kept between runs in `$XDG_STATE_HOME/mjev/draft.json`
+  (else `~/.local/state/mjev/draft.json`): the state and every question
+  as typed, whether it validates yet or not (`Draft::to_saved`), with the
+  example it came from, so Jev's numbers come back too. Written
+  atomically (a temporary file, then a rename) on each saved question,
+  each ask and on quitting; restored when `mjev tui` opens without
+  `--file`. The tests keep it nowhere (`draft_file` is `None`).
+- **Undo:** `u` puts the last deleted question back where it was. `n`
+  twice (within 3 s) starts a new, empty draft; `Ctrl+Q` twice quits
+  while a job runs (a start carries on without the TUI).
+- **The answer:** `r` writes the last response as JSON, as `w` writes
+  the request.
+- **Messages:** an info message clears after 8 s; an error stays until
+  the next message.
+- **A start's progress:** while a start runs, the status row shows the
+  last line of the server's own log (`phi::serve_log`), read from its
+  tail every half second, a line rewritten with `\r` as its latest text,
+  and only once the log is newer than the start (before that it is the
+  previous run's).

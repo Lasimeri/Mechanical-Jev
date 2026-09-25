@@ -34,3 +34,12 @@ ratatui).
 `\r` or `\n`, `�` for the rest): a loaded file's tab, a log's carriage
 return or an escape sequence inside an error would otherwise move the
 terminal's cursor or change its colours and tear the frame.
+
+Colours (`Colors`, read when the terminal opens): truecolor by default;
+`MJEV_COLOR=256` maps each to its nearest xterm 256-colour index
+(`ansi256`: the 6x6x6 cube or the grey ramp, whichever is closer; tested
+on the palette) for a terminal without truecolor; `NO_COLOR` (or
+`MJEV_COLOR=none`) draws none, the selected row in reverse video. Not
+detected: `COLORTERM` is often missing over ssh and in tmux where
+truecolor works, and guessing would quietly downgrade the palette. The
+window's title is set to `mjev`.

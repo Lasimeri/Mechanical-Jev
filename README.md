@@ -40,7 +40,8 @@ about 45 s); after that a question takes seconds.
 ## Use it
 
 ```sh
-make tui            # or: ./target/release/mjev tui [--file request.json]
+make install        # a link at ~/.local/bin/mjev (PREFIX= to change); make uninstall removes it
+mjev                # alone, in a terminal: the TUI (also: mjev tui [--file request.json], make tui)
 ```
 
 A terminal interface, themed after seaof.glass, for using Jev without
@@ -61,11 +62,18 @@ writing JSON:
    number stands next to the local one, for as long as neither the
    question nor the state is edited.
 5. **server** (`s`): state, subject, models; `s` starts, `x` stops and
-   gives the cards back. `l` and `w` on the questions load and write
-   request files, which `mjev query --file` takes too.
+   gives the cards back. While the server starts, the status row shows
+   the line its log is on.
+6. On the questions: `l` and `w` load and write request files (which
+   `mjev query --file` takes too), `r` writes the last answer, `u` brings
+   back a deleted question, `n` twice starts a new draft.
 
-`F1` lists every key. On a first run with no Intel Phi Jev built, home
-says where to build it. The plan and its stages are in
+The draft is kept between runs (`$XDG_STATE_HOME/mjev/draft.json`, else
+`~/.local/state/mjev/draft.json`), a question that does not validate yet
+included. `F1` lists every key. On a first run with no Intel Phi Jev
+built, home says where to build it. Colours are truecolor; `NO_COLOR` turns
+them off (the selected row in reverse video) and `MJEV_COLOR=256` maps
+them to the 256-colour palette for a terminal without truecolor. The plan and its stages are in
 [docs/tui.md](docs/tui.md).
 
 ## Commands

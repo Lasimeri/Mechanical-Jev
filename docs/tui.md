@@ -16,6 +16,7 @@ mode, keys and escapes, the layout in `src/tui/`. Themed after seaof.glass.
 | 2 | `mjev tui [--file F]` in `src/main.rs`, `make tui` | done |
 | 2 | `phi::{ensure_as, start_as, stop_as}` with `Say::Log`, `Client::health` | done; `xks`'s output in a log, not over the screen |
 | 3 | the README's "Use it" section; a first-run note when no Intel Phi Jev is built | done |
+| polish | wrapping editors; the draft kept between runs; undo; the answer written; a start's progress; the form checked as typed; example details; `mjev` alone opens it; `make install`; `NO_COLOR` and `MJEV_COLOR=256` | done |
 | next | asked with the server up on the cards, by a person at a real terminal | not yet |
 
 ## The look (seaof.glass)
@@ -58,7 +59,7 @@ filled cells `█`, copper for the chosen option and `#7a5c38` (the site's
 
 | where | key | does |
 | --- | --- | --- |
-| anywhere | `Ctrl+C`, `Ctrl+Q` | quit |
+| anywhere | `Ctrl+C`, `Ctrl+Q` | quit (twice while a job runs); the draft is kept |
 | anywhere | `F1` | help |
 | anywhere | `Esc` | back (home from ask, from its editor too); a form or a file prompt: cancel |
 | home | `↑` `↓` `Enter`, or `a` `e` `s` `h` `q` | choose |
@@ -66,7 +67,8 @@ filled cells `█`, copper for the chosen option and `#7a5c38` (the site's
 | ask | `Tab` | state or questions |
 | ask, state | keys, paste | edit; `Enter` is a new line |
 | ask, questions | `↑` `↓`; `a` add; `Enter` or `e` edit; `d` delete | the list |
-| ask, questions | `l` load a request file; `w` write one; `x` examples | files |
+| ask, questions | `l` load a request file; `w` write one; `r` write the last answer; `x` examples | files |
+| ask, questions | `u` undo a delete; `n` twice, a new draft | the draft |
 | form | `Tab`, `Shift+Tab` | next, previous field |
 | form, on the kind | `←` `→` or space; `n` `c` `s` | noul, choice, score |
 | form | `Enter` on the kind or the id | next field |

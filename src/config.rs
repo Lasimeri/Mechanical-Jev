@@ -9,16 +9,24 @@
 //!
 //! Each file is `KEY=VALUE` lines, `#` comments, `~/` and `$HOME` expanded,
 //! optional quotes: the same file a shell can source. The repository is
-//! found from the binary (`target/<profile>/mjev`). See config.md.
+//! found from the binary (`target/<profile>/mjev`, or through a link to it),
+//! else it is the checkout the binary was built in. See config.md.
 
 use std::path::{Path, PathBuf};
 
-/// The repository this binary was built in, if it still sits in it.
+/// The repository this binary sits in (a link to it resolves there too),
+/// else the one it was built in when that still exists: a copy of the
+/// binary elsewhere (`cargo install`, a copy in `~/.local/bin`) still reads
+/// the checkout's `mjev.local.conf`.
 pub fn repo_root() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    exe.ancestors()
-        .find(|p| p.join("Cargo.toml").is_file() && p.join("mjev.conf").is_file())
-        .map(Path::to_path_buf)
+    let is_root = |p: &Path| p.join("Cargo.toml").is_file() && p.join("mjev.conf").is_file();
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.ancestors().find(|p| is_root(p)).map(Path::to_path_buf))
+        .or_else(|| {
+            let built = Path::new(env!("CARGO_MANIFEST_DIR"));
+            is_root(built).then(|| built.to_path_buf())
+        })
 }
 
 /// A value the way a shell reads it, for what these files use: segments

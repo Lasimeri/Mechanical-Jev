@@ -2,14 +2,23 @@
 
 .DEFAULT_GOAL := help
 MJEV := target/release/mjev
+PREFIX ?= $(HOME)/.local
 
-.PHONY: help build tui query eval models reconstruct evidence tokenizers closeness serve stop test fmt clippy docs-check tool-check check clean
+.PHONY: help build install uninstall tui query eval models reconstruct evidence tokenizers closeness serve stop test fmt clippy docs-check tool-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
 
 build: ## Build mjev
 	cargo build --release
+
+install: build ## Link mjev into $(PREFIX)/bin (a link: every rebuild is what runs)
+	mkdir -p "$(PREFIX)/bin"
+	ln -sfn "$(CURDIR)/$(MJEV)" "$(PREFIX)/bin/mjev"
+	@echo "$(PREFIX)/bin/mjev -> $(CURDIR)/$(MJEV)"
+
+uninstall: ## Remove that link (only a link, never a file)
+	@if [ -L "$(PREFIX)/bin/mjev" ]; then rm "$(PREFIX)/bin/mjev" && echo "removed $(PREFIX)/bin/mjev"; else echo "no link at $(PREFIX)/bin/mjev"; fi
 
 tui: build ## The terminal interface (FILE=request.json to open one)
 	$(MJEV) tui $(if $(FILE),--file $(FILE))

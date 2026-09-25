@@ -270,6 +270,51 @@ impl Draft {
         Ok(Self { state, questions })
     }
 
+    /// The draft as it is saved between runs: every field as typed, so a
+    /// question that does not validate yet, or no question at all, is
+    /// kept as well (`to_request` would refuse both).
+    pub fn to_saved(&self) -> Value {
+        json!({
+            "state": self.state,
+            "questions": self.questions.iter().map(|q| json!({
+                "id": q.id,
+                "kind": q.kind.name(),
+                "instructions": q.instructions,
+                "options": q.options,
+            })).collect::<Vec<_>>(),
+        })
+    }
+
+    /// A saved draft; `None` when it is not one.
+    pub fn from_saved(v: &Value) -> Option<Self> {
+        let s = |v: &Value, k: &str| v[k].as_str().map(String::from);
+        let questions = v["questions"]
+            .as_array()?
+            .iter()
+            .map(|q| {
+                Some(QDraft {
+                    id: s(q, "id")?,
+                    kind: match q["kind"].as_str()? {
+                        "noul" => Kind::Noul,
+                        "choice" => Kind::Choice,
+                        "score" => Kind::Score,
+                        _ => return None,
+                    },
+                    instructions: s(q, "instructions")?,
+                    options: s(q, "options")?,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        Some(Self {
+            state: s(v, "state")?,
+            questions,
+        })
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.state.trim().is_empty() && self.questions.is_empty()
+    }
+
     /// A fresh id: q1, q2, ... not yet used.
     pub fn next_id(&self) -> String {
         (1..)
@@ -476,6 +521,20 @@ mod tests {
         assert_eq!(l[2].note, "jev 0.76");
         assert_eq!(filled(0.5, 10), 5);
         assert_eq!(filled(1.7, 10), 10);
+    }
+
+    #[test]
+    fn a_draft_is_saved_as_typed_even_when_it_does_not_validate() {
+        let mut q = QDraft::new("s");
+        q.kind = Kind::Score;
+        q.options = "only one level".into(); // not a valid Score yet
+        let d = Draft {
+            state: "half written".into(),
+            questions: vec![q],
+        };
+        assert!(d.to_request().is_err());
+        assert_eq!(Draft::from_saved(&d.to_saved()), Some(d));
+        assert_eq!(Draft::from_saved(&json!({"state": 1})), None);
     }
 
     #[test]

@@ -6,7 +6,7 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use serde_json::{Map, Value};
@@ -23,6 +23,51 @@ use crate::protocol::{Request, Response};
 const POLL: Duration = Duration::from_millis(100);
 /// How often the local server's health is checked while nothing runs.
 const HEALTH_EVERY: Duration = Duration::from_secs(5);
+/// How long an info message stays; an error stays until the next one.
+const INFO_FOR: Duration = Duration::from_secs(8);
+/// How long a first press of a key that asks for a second one waits.
+const CONFIRM_FOR: Duration = Duration::from_secs(3);
+
+/// Where the draft is kept between runs: `$XDG_STATE_HOME/mjev/draft.json`,
+/// else `~/.local/state/mjev/draft.json`.
+pub fn draft_path() -> PathBuf {
+    std::env::var_os("XDG_STATE_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/state")
+        })
+        .join("mjev")
+        .join("draft.json")
+}
+
+/// The last line of `p` when it was written after `since`: what a starting
+/// server is doing. Only the file's tail is read, and a line rewritten with
+/// `\r` (a progress count) shows as its latest text.
+fn last_line(p: &Path, since: SystemTime) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let meta = std::fs::metadata(p).ok()?;
+    if meta.modified().ok()? < since {
+        return None;
+    }
+    let mut f = std::fs::File::open(p).ok()?;
+    f.seek(SeekFrom::Start(meta.len().saturating_sub(4096)))
+        .ok()?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf).ok()?;
+    let text = String::from_utf8_lossy(&buf);
+    let line = text
+        .lines()
+        .rev()
+        .map(|l| {
+            l.rsplit('\r')
+                .find(|s| !s.trim().is_empty())
+                .unwrap_or("")
+                .trim()
+        })
+        .find(|l| !l.is_empty())?;
+    Some(line.to_string())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
@@ -99,7 +144,7 @@ impl Form {
         }
     }
 
-    fn draft(&self) -> QDraft {
+    pub fn draft(&self) -> QDraft {
         QDraft {
             id: self.id.text().trim().to_string(),
             kind: self.kind,
@@ -123,6 +168,8 @@ impl Form {
 pub enum PromptFor {
     Load,
     Write,
+    /// The last response.
+    Answer,
 }
 
 /// A file path asked for on the ask screen's status row.
@@ -181,7 +228,9 @@ pub enum Job {
 }
 
 enum Msg {
-    Phase(String),
+    /// What the job does now; `true` while it starts the server, whose
+    /// log then shows as progress.
+    Phase(String, bool),
     Health(Result<String, String>),
     Models(Result<Vec<String>, String>),
     Asked(Result<Box<Asked>, String>),
@@ -219,6 +268,22 @@ pub struct App {
     pub job: Option<(Job, String, Instant)>,
     /// The last message, and whether it is an error.
     pub status: Option<(String, bool)>,
+    /// When it was set: an info message clears after `INFO_FOR`.
+    status_at: Option<Instant>,
+    /// The last question deleted, and where it was, for `u`.
+    pub deleted: Option<(usize, QDraft)>,
+    /// The starting server's latest log line, while a job starts it.
+    pub progress: Option<String>,
+    /// Since when the server's log is progress (a log older than the
+    /// start is the previous run's).
+    watch_since: Option<SystemTime>,
+    /// A first `Ctrl+Q` while a job runs, waiting for the second.
+    quit_armed: Option<Instant>,
+    /// A first `n` (a new, empty draft), waiting for the second.
+    clear_armed: Option<Instant>,
+    /// Where the draft is kept between runs; `None` keeps it nowhere
+    /// (the tests).
+    pub draft_file: Option<PathBuf>,
     pub quit: bool,
     pub spin: usize,
     tx: Sender<Msg>,
@@ -281,6 +346,13 @@ impl App {
             rx,
             health_pending: false,
             last_health: None,
+            status_at: None,
+            deleted: None,
+            progress: None,
+            watch_since: None,
+            quit_armed: None,
+            clear_armed: None,
+            draft_file: None,
         }
     }
 
@@ -320,6 +392,7 @@ impl App {
 
     fn info(&mut self, s: impl Into<String>) {
         self.status = Some((s.into(), false));
+        self.status_at = Some(Instant::now());
     }
 
     /// An error: its first line on the status row; the whole of a longer
@@ -333,6 +406,7 @@ impl App {
         } else {
             self.status = Some((first, true));
         }
+        self.status_at = Some(Instant::now());
     }
 
     // Keys.
@@ -344,7 +418,17 @@ impl App {
         let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
         match k.code {
             KeyCode::Char('c' | 'q') if ctrl => {
-                self.quit = true;
+                // Mid-job, a second press quits: a start carries on
+                // without the TUI and the server stays up.
+                let armed = self.quit_armed.is_some_and(|t| t.elapsed() < CONFIRM_FOR);
+                if self.job.is_none() || armed {
+                    self.quit = true;
+                } else {
+                    self.quit_armed = Some(Instant::now());
+                    self.fail(
+                        "a job is running: ctrl+q again quits (it carries on without the tui)",
+                    );
+                }
                 return;
             }
             KeyCode::F(1) if self.screen != Screen::Help => {
@@ -441,14 +525,19 @@ impl App {
             KeyCode::Up => self.q_sel = self.q_sel.saturating_sub(1),
             KeyCode::Down => self.q_sel = (self.q_sel + 1).min(n.saturating_sub(1)),
             KeyCode::Char('a') => self.open_form(None),
+            KeyCode::Char('u') => self.undo(),
+            KeyCode::Char('n') => self.clear(),
             KeyCode::Enter | KeyCode::Char('e') if n > 0 => self.open_form(Some(self.q_sel)),
             KeyCode::Char('d') if n > 0 => {
                 let q = self.questions.remove(self.q_sel);
+                self.info(format!("deleted {}; u brings it back", q.id));
+                self.deleted = Some((self.q_sel, q));
                 self.q_sel = self.q_sel.min(self.questions.len().saturating_sub(1));
-                self.info(format!("deleted {}", q.id));
             }
             KeyCode::Char('l') => self.ask_path(PromptFor::Load),
             KeyCode::Char('w') => self.ask_path(PromptFor::Write),
+            KeyCode::Char('r') if self.asked.is_some() => self.ask_path(PromptFor::Answer),
+            KeyCode::Char('r') => self.fail("nothing asked yet: f5 asks"),
             KeyCode::Char('x') => self.screen = Screen::Examples,
             _ => {}
         }
@@ -528,6 +617,7 @@ impl App {
         self.screen = Screen::Ask;
         self.focus = Focus::Questions;
         self.info(format!("saved {id}; f5 asks"));
+        self.save_draft();
     }
 
     fn examples_key(&mut self, k: KeyEvent) {
@@ -599,6 +689,7 @@ impl App {
                 match what {
                     PromptFor::Load => self.load_file(Path::new(&path)),
                     PromptFor::Write => self.write_file(Path::new(&path)),
+                    PromptFor::Answer => self.write_answer(Path::new(&path)),
                 }
             }
             _ => {
@@ -655,6 +746,114 @@ impl App {
         });
     }
 
+    /// Watch the server's log for progress (a start), or stop watching.
+    fn watch(&mut self, on: bool) {
+        if on && self.watch_since.is_none() {
+            self.watch_since = Some(SystemTime::now());
+        } else if !on {
+            self.watch_since = None;
+            self.progress = None;
+        }
+    }
+
+    fn end_job(&mut self) {
+        self.job = None;
+        self.quit_armed = None;
+        self.watch(false);
+    }
+
+    /// A new, empty draft, on a second `n`.
+    fn clear(&mut self) {
+        if self.clear_armed.is_some_and(|t| t.elapsed() < CONFIRM_FOR) {
+            self.clear_armed = None;
+            self.set_draft(Draft::default());
+            self.focus = Focus::State;
+            self.save_draft();
+            self.info("a new draft");
+        } else {
+            self.clear_armed = Some(Instant::now());
+            self.fail("n again clears the state and every question");
+        }
+    }
+
+    /// The last question deleted, back where it was.
+    fn undo(&mut self) {
+        match self.deleted.take() {
+            Some((i, q)) => {
+                let i = i.min(self.questions.len());
+                self.info(format!("{} is back", q.id));
+                self.questions.insert(i, q);
+                self.q_sel = i;
+            }
+            None => self.fail("nothing deleted to bring back"),
+        }
+    }
+
+    fn write_answer(&mut self, p: &Path) {
+        let Some(a) = &self.asked else {
+            return self.fail("nothing asked yet: f5 asks");
+        };
+        let text = serde_json::to_string_pretty(&a.response).unwrap_or_default() + "\n";
+        match std::fs::write(p, text) {
+            Ok(()) => self.info(format!("wrote the answer to {}", p.display())),
+            Err(e) => self.fail(format!("{}: {e}", p.display())),
+        }
+    }
+
+    /// Keep the draft for the next run; an error on the status row.
+    pub fn save_draft(&mut self) {
+        if let Err(e) = self.keep_draft() {
+            self.fail(e);
+        }
+    }
+
+    /// Keep the draft for the next run, atomically: the whole new file or
+    /// the old one.
+    pub fn keep_draft(&self) -> Result<(), String> {
+        let Some(p) = self.draft_file.clone() else {
+            return Ok(());
+        };
+        let mut v = self.draft().to_saved();
+        if let Some(ex) = &self.loaded {
+            if let Some(i) = self.examples.iter().position(|e| e.request == ex.request) {
+                v["example"] = i.into();
+            }
+        }
+        let tmp = p.with_extension("json.tmp");
+        let r = p
+            .parent()
+            .map_or(Ok(()), std::fs::create_dir_all)
+            .and_then(|()| std::fs::write(&tmp, v.to_string()))
+            .and_then(|()| std::fs::rename(&tmp, &p));
+        r.map_err(|e| format!("the draft was not kept: {}: {e}", p.display()))
+    }
+
+    /// The draft kept by the last run, if any; whether there was one.
+    pub fn restore_draft(&mut self) -> bool {
+        let Some(p) = &self.draft_file else {
+            return false;
+        };
+        let Some(v) = std::fs::read_to_string(p)
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        else {
+            return false;
+        };
+        let Some(d) = Draft::from_saved(&v).filter(|d| !d.is_empty()) else {
+            return false;
+        };
+        self.set_draft(d);
+        self.loaded = v["example"]
+            .as_u64()
+            .and_then(|i| self.examples.get(i as usize).cloned());
+        self.focus = if self.questions.is_empty() {
+            Focus::State
+        } else {
+            Focus::Questions
+        };
+        true
+    }
+
     fn busy(&mut self) -> bool {
         if let Some((_, what, _)) = &self.job {
             let what = what.clone();
@@ -675,15 +874,17 @@ impl App {
         };
         let (client, local) = (self.client.clone(), self.bind.is_some());
         self.job = Some((Job::Asking, "asking".into(), Instant::now()));
+        self.save_draft();
         self.spawn(move |tx| {
             if local && !client.healthy() {
                 let _ = tx.send(Msg::Phase(
                     "starting intel phi jev (loads the model, a minute or so), then asking".into(),
+                    true,
                 ));
                 if let Err(e) = phi::ensure_as(&client, Say::Log) {
                     return Msg::Asked(Err(e));
                 }
-                let _ = tx.send(Msg::Phase("asking".into()));
+                let _ = tx.send(Msg::Phase("asking".into(), false));
             }
             Msg::Asked(
                 client
@@ -716,6 +917,7 @@ impl App {
             "starting intel phi jev (loads the model, a minute or so)".into(),
             Instant::now(),
         ));
+        self.watch(true);
         self.spawn(move |_| {
             if client.healthy() {
                 return Msg::Started(Ok(format!("{} already answers", client.base)));
@@ -782,10 +984,11 @@ impl App {
 
     fn apply(&mut self, m: Msg) {
         match m {
-            Msg::Phase(s) => {
+            Msg::Phase(s, starting) => {
                 if let Some(j) = &mut self.job {
                     j.1 = s;
                 }
+                self.watch(starting);
             }
             Msg::Health(r) => {
                 self.health_pending = false;
@@ -812,7 +1015,7 @@ impl App {
                 }
             },
             Msg::Asked(r) => {
-                self.job = None;
+                self.end_job();
                 match r {
                     Ok(a) => {
                         self.info(format!(
@@ -827,7 +1030,7 @@ impl App {
                 }
             }
             Msg::Started(r) => {
-                self.job = None;
+                self.end_job();
                 match r {
                     Ok(tail) => {
                         self.server.log = tail;
@@ -838,7 +1041,7 @@ impl App {
                 }
             }
             Msg::Stopped(r) => {
-                self.job = None;
+                self.end_job();
                 match r {
                     Ok(tail) => {
                         self.server.log = tail;
@@ -851,7 +1054,7 @@ impl App {
                 }
             }
             Msg::Panicked(s) => {
-                self.job = None;
+                self.end_job();
                 self.health_pending = false;
                 self.fail(format!("a job panicked: {s}"));
             }
@@ -870,6 +1073,18 @@ impl App {
             self.spin = self.spin.wrapping_add(1);
             changed = true;
         }
+        let info = self.status.as_ref().is_some_and(|s| !s.1);
+        if info && self.status_at.is_some_and(|t| t.elapsed() >= INFO_FOR) {
+            self.status = None;
+            changed = true;
+        }
+        if let Some(since) = self.watch_since {
+            if self.spin % 5 == 0 {
+                let p = last_line(&phi::serve_log(), since);
+                changed |= p != self.progress;
+                self.progress = p;
+            }
+        }
         let due = self.last_health.is_none_or(|t| t.elapsed() >= HEALTH_EVERY);
         if self.bind.is_some() && self.job.is_none() && !self.health_pending && due {
             self.check_health();
@@ -886,9 +1101,12 @@ pub fn run(client: Client, file: Option<PathBuf>) -> Result<(), String> {
         return Err("mjev tui needs a terminal".into());
     }
     let mut app = App::new(client);
+    app.draft_file = Some(draft_path());
     if let Some(p) = file {
         app.load_file(&p);
         app.screen = Screen::Ask;
+    } else if app.restore_draft() {
+        app.info("your last draft is back in / ask");
     }
     let mut term = Term::open().map_err(|e| format!("the terminal: {e}"))?;
     let mut dirty = true;
@@ -909,8 +1127,12 @@ pub fn run(client: Client, file: Option<PathBuf>) -> Result<(), String> {
             dirty = true;
         }
     }
-    // Back on the main screen first, so the line stays visible.
+    let kept = app.keep_draft();
+    // Back on the main screen first, so the lines stay visible.
     drop(term);
+    if let Err(e) = kept {
+        eprintln!("mjev: {e}");
+    }
     if app.bind.is_some() && app.server.up == Some(true) {
         eprintln!(
             "mjev: the server on {} is still running (on the cards it holds their memory); \
@@ -1007,6 +1229,73 @@ mod tests {
         assert!(a.jev_for(0).is_none());
         press(&mut a, KeyCode::Backspace);
         assert!(a.jev_for(0).is_some());
+    }
+
+    #[test]
+    fn delete_undo_and_a_new_draft_on_a_second_n() {
+        let mut a = app();
+        a.load_example(0);
+        let n = a.questions.len();
+        press(&mut a, KeyCode::Char('d'));
+        assert_eq!(a.questions.len(), n - 1);
+        press(&mut a, KeyCode::Char('u'));
+        assert_eq!(a.questions.len(), n);
+        press(&mut a, KeyCode::Char('n'));
+        assert_eq!(a.questions.len(), n, "one n only asks");
+        press(&mut a, KeyCode::Char('n'));
+        assert!(a.draft().is_empty() && a.loaded.is_none());
+    }
+
+    #[test]
+    fn quitting_mid_job_takes_a_second_press() {
+        let mut a = app();
+        a.job = Some((Job::Starting, "starting".into(), Instant::now()));
+        ctrl(&mut a, 'q');
+        assert!(!a.quit);
+        ctrl(&mut a, 'q');
+        assert!(a.quit);
+    }
+
+    #[test]
+    fn the_draft_survives_a_restart_as_typed() {
+        let p = std::env::temp_dir().join(format!("mjev-draft-{}.json", std::process::id()));
+        let mut a = app();
+        a.draft_file = Some(p.clone());
+        a.load_example(a.examples.len() - 1);
+        a.questions[0].options = "true: only half".into(); // not valid yet
+        a.save_draft();
+        let mut b = app();
+        b.draft_file = Some(p.clone());
+        assert!(b.restore_draft());
+        assert_eq!(b.draft(), a.draft());
+        assert!(b.loaded.is_some(), "the example comes back with it");
+        std::fs::remove_file(&p).unwrap();
+        assert!(!b.restore_draft());
+    }
+
+    #[test]
+    fn a_start_shows_the_log_line_it_is_on() {
+        let p = std::env::temp_dir().join(format!("mjev-serve-{}.log", std::process::id()));
+        std::fs::write(&p, "loading\nprogress 10%\rprogress 55%\r\n\n").unwrap();
+        let before = SystemTime::now() - Duration::from_secs(60);
+        assert_eq!(last_line(&p, before).as_deref(), Some("progress 55%"));
+        let after = SystemTime::now() + Duration::from_secs(60);
+        assert_eq!(last_line(&p, after), None, "a log from before the start");
+        std::fs::remove_file(&p).unwrap();
+    }
+
+    #[test]
+    fn info_fades_and_errors_stay() {
+        let mut a = app();
+        a.bind = None; // no health check from tick
+        a.info("saved");
+        a.status_at = Some(Instant::now() - INFO_FOR);
+        a.tick();
+        assert!(a.status.is_none());
+        a.fail("broken");
+        a.status_at = Some(Instant::now() - INFO_FOR);
+        a.tick();
+        assert!(a.status.is_some());
     }
 
     /// Every screen at every size: rows inside the width, the cursor on

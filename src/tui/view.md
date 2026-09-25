@@ -34,3 +34,9 @@ they fit, keeping `f1 help` last, so a narrow terminal drops the least
 used first. A question's row sizes its id column from the longest id (up
 to 24, cut with `…`) and shows its instructions as one line
 (`model::summary`: a structured instruction's `question` field).
+
+The form checks the question as it is typed, the way saving will ("ready:
+3 options", or "not yet:" and why). The examples screen shows the
+selected request in full under the list: where it is from, its note and
+each question with its kind and instructions. While a start runs, the
+status row shows the server log's latest line.

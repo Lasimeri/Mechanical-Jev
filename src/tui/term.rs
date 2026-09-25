@@ -176,9 +176,66 @@ impl Frame {
     }
 }
 
+/// How colours are drawn: seaof.glass's truecolor (the default); the
+/// nearest of the 256-colour palette (`MJEV_COLOR=256`, for a terminal
+/// without truecolor); or none (`NO_COLOR` set, as no-color.org asks, or
+/// `MJEV_COLOR=none`), the selected row then in reverse video.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Colors {
+    True,
+    Ansi256,
+    None,
+}
+
+impl Colors {
+    pub fn from_env() -> Self {
+        if std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty()) {
+            return Colors::None;
+        }
+        match std::env::var("MJEV_COLOR").as_deref() {
+            Ok("256") => Colors::Ansi256,
+            Ok("none") => Colors::None,
+            _ => Colors::True,
+        }
+    }
+
+    /// `c` as drawn, `None` for no colour at all.
+    fn map(self, c: Color) -> Option<Color> {
+        match (self, c) {
+            (Colors::None, _) => None,
+            (Colors::Ansi256, Color::Rgb { r, g, b }) => Some(Color::AnsiValue(ansi256(r, g, b))),
+            (_, c) => Some(c),
+        }
+    }
+}
+
+/// The xterm 256-colour index nearest `(r, g, b)`: the 6x6x6 cube or the
+/// grey ramp, whichever is closer.
+pub fn ansi256(r: u8, g: u8, b: u8) -> u8 {
+    const LEVELS: [i32; 6] = [0, 95, 135, 175, 215, 255];
+    let near = |v: u8| {
+        (0..6)
+            .min_by_key(|&i| (LEVELS[i] - v as i32).abs())
+            .unwrap_or(0)
+    };
+    let dist = |x: i32, y: i32, z: i32| {
+        (x - r as i32).pow(2) + (y - g as i32).pow(2) + (z - b as i32).pow(2)
+    };
+    let (ri, gi, bi) = (near(r), near(g), near(b));
+    let cube = dist(LEVELS[ri], LEVELS[gi], LEVELS[bi]);
+    let grey = ((r as i32 + g as i32 + b as i32) / 3 - 8).clamp(0, 230) / 10;
+    let gv = 8 + 10 * grey;
+    if dist(gv, gv, gv) < cube {
+        232 + grey as u8
+    } else {
+        (16 + 36 * ri + 6 * gi + bi) as u8
+    }
+}
+
 /// The terminal, in raw mode on the alternate screen while this lives.
 pub struct Term {
     out: Stdout,
+    colors: Colors,
 }
 
 /// A worker thread's last panic, kept instead of printed (it would land on
@@ -211,23 +268,38 @@ impl Term {
             out,
             terminal::EnterAlternateScreen,
             event::EnableBracketedPaste,
-            cursor::Hide
+            cursor::Hide,
+            terminal::SetTitle("mjev")
         )?;
-        Ok(Term { out })
+        Ok(Term {
+            out,
+            colors: Colors::from_env(),
+        })
     }
 
     pub fn size() -> (u16, u16) {
         terminal::size().unwrap_or((80, 24))
     }
 
+    /// Start a run of text: attributes reset, then its colours (as the
+    /// palette allows) or, with no colour, reverse video for a highlight.
+    fn style(&mut self, fg: Color, bg: Color) -> io::Result<()> {
+        queue!(self.out, SetAttribute(Attribute::Reset), ResetColor)?;
+        if let Some(c) = self.colors.map(bg) {
+            queue!(self.out, SetBackgroundColor(c))?;
+        } else if bg != theme::BG {
+            queue!(self.out, SetAttribute(Attribute::Reverse))?;
+        }
+        if let Some(c) = self.colors.map(fg) {
+            queue!(self.out, SetForegroundColor(c))?;
+        }
+        Ok(())
+    }
+
     pub fn draw(&mut self, f: &Frame) -> io::Result<()> {
         queue!(self.out, terminal::BeginSynchronizedUpdate, cursor::Hide)?;
         for (r, row) in f.rows.iter().enumerate() {
-            queue!(
-                self.out,
-                cursor::MoveTo(0, r as u16),
-                SetBackgroundColor(row.bg)
-            )?;
+            queue!(self.out, cursor::MoveTo(0, r as u16))?;
             let mut left = f.width as usize;
             for s in &row.spans {
                 if left == 0 {
@@ -235,24 +307,21 @@ impl Term {
                 }
                 let text: String = s.text.chars().take(left).collect();
                 left -= text.chars().count();
-                queue!(self.out, SetForegroundColor(s.fg))?;
-                if let Some(bg) = s.bg {
-                    queue!(self.out, SetBackgroundColor(bg))?;
-                }
+                self.style(s.fg, s.bg.unwrap_or(row.bg))?;
                 if s.bold {
                     queue!(self.out, SetAttribute(Attribute::Bold))?;
                 }
                 if s.italic {
                     queue!(self.out, SetAttribute(Attribute::Italic))?;
                 }
-                queue!(
-                    self.out,
-                    Print(text),
-                    SetAttribute(Attribute::Reset),
-                    SetBackgroundColor(row.bg)
-                )?;
+                queue!(self.out, Print(text))?;
             }
-            queue!(self.out, Print(" ".repeat(left)))?;
+            self.style(theme::TEXT, row.bg)?;
+            queue!(
+                self.out,
+                Print(" ".repeat(left)),
+                SetAttribute(Attribute::Reset)
+            )?;
         }
         queue!(self.out, ResetColor)?;
         if let Some((x, y)) = f.cursor {
@@ -279,4 +348,18 @@ fn restore() {
         terminal::LeaveAlternateScreen,
         cursor::Show
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ansi256;
+
+    #[test]
+    fn the_palette_maps_to_its_nearest_256_colours() {
+        assert_eq!(ansi256(0, 0, 0), 16);
+        assert_eq!(ansi256(255, 255, 255), 231);
+        assert_eq!(ansi256(0x0a, 0x0a, 0x0f), 232); // BG: the darkest grey
+        assert_eq!(ansi256(0xc4, 0x94, 0x5a), 173); // TEXT: (215, 135, 95)
+        assert_eq!(ansi256(0x12, 0x12, 0x1a), 233); // SURFACE, a step above BG
+    }
 }

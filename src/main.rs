@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use clap::{Parser, Subcommand};
+use std::io::IsTerminal;
+
+use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{json, Map, Value};
 
 use mechanical_jev::client::Client;
@@ -18,7 +20,8 @@ use mechanical_jev::{config, corroborate, eval, phi, reconstruction};
 )]
 struct Cli {
     #[command(subcommand)]
-    cmd: Cmd,
+    /// None: the TUI in a terminal (`mjev` alone).
+    cmd: Option<Cmd>,
 }
 
 #[derive(Subcommand)]
@@ -112,7 +115,21 @@ fn read_rows(p: &PathBuf) -> Result<Vec<eval::Row>, String> {
 
 fn run() -> Result<(), String> {
     let cli = Cli::parse();
-    if let Cmd::Evidence { out } = &cli.cmd {
+    let cmd = match cli.cmd {
+        Some(c) => c,
+        // `mjev` alone: the TUI in a terminal; anywhere else the usage
+        // error it always was (exit 2).
+        None if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() => {
+            Cmd::Tui { file: None }
+        }
+        None => Cli::command()
+            .error(
+                clap::error::ErrorKind::MissingSubcommand,
+                "a subcommand is required (mjev alone opens the TUI, in a terminal)",
+            )
+            .exit(),
+    };
+    if let Cmd::Evidence { out } = &cmd {
         std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
         let cases: String = mechanical_jev::evidence::cases()
             .iter()
@@ -131,7 +148,7 @@ fn run() -> Result<(), String> {
         println!("{}\n{}", cf.display(), rf.display());
         return Ok(());
     }
-    if let Cmd::Reconstruct { file } = &cli.cmd {
+    if let Cmd::Reconstruct { file } = &cmd {
         let req = build_request(file.clone(), None, Vec::new(), Vec::new(), Vec::new())?;
         let plan = reconstruction::compile(&req)?;
         let branches: Vec<Value> = plan
@@ -156,7 +173,7 @@ fn run() -> Result<(), String> {
         b,
         pairs,
         temperature,
-    } = &cli.cmd
+    } = &cmd
     {
         let (ra, rb) = (read_rows(a)?, read_rows(b)?);
         let mut r = corroborate::compare(&ra, &rb);
@@ -172,14 +189,14 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
     let client = Client::from_env();
-    match cli.cmd {
+    match cmd {
         // Starts nothing up front: the TUI starts the server when asked to.
         Cmd::Tui { file } => return mechanical_jev::tui::app::run(client, file),
         Cmd::Serve => return phi::serve(&client),
         Cmd::Stop => return phi::stop(),
         _ => phi::ensure(&client)?,
     }
-    match cli.cmd {
+    match cmd {
         Cmd::Query {
             file,
             state,
