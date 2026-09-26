@@ -107,6 +107,7 @@ jaggedness page give 28 questions; the gold is Jev's own answer.
 | lettered options, the docs' order | 27 of 28 | 0.120 |
 | lettered options, the docs' order, averaged over 3 option rotations | **28 of 28** | **0.113** |
 | the same, re-run 2026-09-25 on Intel Phi Jev 82439bb (the session cut at the state, escaped labels) | **28 of 28** | 0.120 |
+| the same, re-run 2026-09-26 (UTC) on Intel Phi Jev 4bfa67b, the cards site (both cards, offloaded; `make closeness`, 97.6 s) | **28 of 28** | 0.120 |
 | the reconstructed layout (question JSON, answered with the key) | 16 to 17 of 28 | 0.30 |
 
 What that refines:
