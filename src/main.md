@@ -50,3 +50,12 @@ primitives page) with its three questions: exit 11, the frustration Score
 escalated at confidence 0.25; with a policy file, the speculative Noul
 reported and ignored, a composite of 0.64 acting; a policy typo exit 1
 before any call; an unreachable server exit 1.
+
+## label and rank
+
+`label` ([`label.rs`](label.md)) and `rank` ([`rank.rs`](rank.md)) read
+their input (a file, or stdin, refused at once when stdin is a terminal
+and no file is named), their questions and their policy before the
+server can be started. `label` writes one JSON line per state (to
+`--out` or stdout) and exits 1 when any state failed; `rank` prints
+`P  index  candidate` lines (or `--json`), `--top N` the best N.

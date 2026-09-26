@@ -11,7 +11,7 @@ use serde_json::{json, Map, Value};
 use mechanical_jev::client::Client;
 use mechanical_jev::policy::{self, Policy};
 use mechanical_jev::protocol::Request;
-use mechanical_jev::{config, corroborate, eval, phi, reconstruction};
+use mechanical_jev::{config, corroborate, eval, label, phi, rank, reconstruction};
 
 #[derive(Parser)]
 #[command(
@@ -76,6 +76,57 @@ enum Cmd {
         #[arg(long)]
         policy: Option<PathBuf>,
         /// The verdict as JSON, not lines.
+        #[arg(long)]
+        json: bool,
+    },
+    /// The same questions over many states: one JSON line out per line in
+    /// (a JSON object with `state` and an optional `id`, any other JSON
+    /// value, or plain text), each judged act, review or escalate by a
+    /// policy; the count of each on stderr (src/label.md).
+    Label {
+        /// The states, one per line (default: stdin).
+        #[arg(long)]
+        input: Option<PathBuf>,
+        /// Every line is a text state, even one that parses as JSON.
+        #[arg(long)]
+        text: bool,
+        /// The questions: a JSON file of the questions map, or a request.
+        #[arg(long)]
+        questions: Option<PathBuf>,
+        /// id=instructions (as for `query`).
+        #[arg(long)]
+        noul: Vec<String>,
+        /// id=instructions|options (as for `query`).
+        #[arg(long)]
+        choice: Vec<String>,
+        /// id=instructions|levels (as for `query`).
+        #[arg(long)]
+        score: Vec<String>,
+        /// A policy file (as for `gate`).
+        #[arg(long)]
+        policy: Option<PathBuf>,
+        /// Where the lines go (default: stdout).
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    /// Rank candidates against a query, surest first: one Noul per
+    /// candidate, TypeSafe's re-ranking shape, its P(yes) the score
+    /// (src/rank.md).
+    Rank {
+        /// What the candidates are ranked against.
+        #[arg(long)]
+        query: String,
+        /// The candidates, one per non-empty line (default: stdin).
+        #[arg(long)]
+        input: Option<PathBuf>,
+        /// Only the best N.
+        #[arg(long)]
+        top: Option<usize>,
+        /// Ask this of each candidate instead of "Does the candidate answer
+        /// `query`?".
+        #[arg(long)]
+        instructions: Option<String>,
+        /// The ranking as JSON, not lines.
         #[arg(long)]
         json: bool,
     },
@@ -275,8 +326,132 @@ fn run() -> Result<(), String> {
         }
         _ => None,
     };
+    // label: its states, questions and policy; rank: its candidates.
+    let labelling = match &cmd {
+        Cmd::Label {
+            input,
+            text,
+            questions,
+            noul,
+            choice,
+            score,
+            policy,
+            ..
+        } => {
+            let items = label::items(&read_input(input.as_ref())?, *text);
+            if items.is_empty() {
+                return Err("no states: every line of the input is empty".into());
+            }
+            let mut q = match questions {
+                Some(p) => label::questions_of(
+                    serde_json::from_str(
+                        &std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?,
+                    )
+                    .map_err(|e| format!("{}: {e}", p.display()))?,
+                )?,
+                None => Map::new(),
+            };
+            if !(noul.is_empty() && choice.is_empty() && score.is_empty()) {
+                let flags = build_request(
+                    None,
+                    Some(String::new()),
+                    noul.clone(),
+                    choice.clone(),
+                    score.clone(),
+                )?;
+                q.extend(flags.questions);
+            }
+            if q.is_empty() {
+                return Err("no questions: --questions FILE, or --noul/--choice/--score".into());
+            }
+            mechanical_jev::protocol::parse_questions(&q)?;
+            let p = match policy {
+                Some(path) => Policy::load(path)?,
+                None => Policy::default(),
+            };
+            Some((items, q, p))
+        }
+        _ => None,
+    };
+    let candidates = match &cmd {
+        Cmd::Rank { input, .. } => {
+            let c: Vec<String> = read_input(input.as_ref())?
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect();
+            if c.is_empty() {
+                return Err("no candidates: every line of the input is empty".into());
+            }
+            Some(c)
+        }
+        _ => None,
+    };
     phi::ensure(&client)?;
     match cmd {
+        Cmd::Label { out, .. } => {
+            let (items, q, p) = labelling.ok_or("no states were read")?;
+            let mut sink: Box<dyn std::io::Write> = match &out {
+                Some(path) => Box::new(
+                    std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?,
+                ),
+                None => Box::new(std::io::stdout().lock()),
+            };
+            let t0 = Instant::now();
+            let tty = std::io::stderr().is_terminal();
+            let tally = label::run(&client, &q, &p, &items, &mut sink, &mut |d, n| {
+                if tty {
+                    eprint!("\rlabel: {d} of {n}");
+                }
+            })?;
+            if tty {
+                eprintln!();
+            }
+            eprintln!(
+                "label: {} states in {:.1} s: act {}, review {}, escalate {}, errors {}",
+                items.len(),
+                t0.elapsed().as_secs_f64(),
+                tally.act,
+                tally.review,
+                tally.escalate,
+                tally.errors
+            );
+            if tally.errors > 0 {
+                return Err(format!(
+                    "{} of {} states failed (their lines say why)",
+                    tally.errors,
+                    items.len()
+                ));
+            }
+            Ok(())
+        }
+        Cmd::Rank {
+            query,
+            top,
+            instructions,
+            json,
+            ..
+        } => {
+            let c = candidates.ok_or("no candidates were read")?;
+            let t0 = Instant::now();
+            let words = instructions.unwrap_or_else(|| rank::INSTRUCTIONS.to_string());
+            let mut ranked = rank::rank(&client, &query, &c, &words, &mut |_, _| {})?;
+            ranked.truncate(top.unwrap_or(ranked.len()));
+            if json {
+                println!("{}", serde_json::to_string_pretty(&ranked).unwrap());
+            } else {
+                for r in &ranked {
+                    println!("{:.2}  {:>4}  {}", r.p, r.index, r.text);
+                }
+            }
+            eprintln!(
+                "rank: {} candidates in {:.1} s",
+                c.len(),
+                t0.elapsed().as_secs_f64()
+            );
+            Ok(())
+        }
         Cmd::Gate { json, .. } => {
             let (req, p) = request.zip(gate_policy).ok_or("no request was read")?;
             let (resp, took) = client.system_one(&req).map_err(|e| e.to_string())?;
@@ -335,6 +510,23 @@ fn run() -> Result<(), String> {
         | Cmd::Stop
         | Cmd::Doctor { .. }
         | Cmd::Tui { .. } => Ok(()),
+    }
+}
+
+/// A file's text, or stdin's; refused at once when stdin is a terminal
+/// and nothing names a file, rather than waiting on it.
+fn read_input(file: Option<&PathBuf>) -> Result<String, String> {
+    match file {
+        Some(p) => std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display())),
+        None if std::io::stdin().is_terminal() => {
+            Err("no input: --input FILE, or lines piped on stdin".into())
+        }
+        None => {
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                .map_err(|e| format!("stdin: {e}"))?;
+            Ok(text)
+        }
     }
 }
 

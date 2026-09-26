@@ -101,6 +101,8 @@ edit, each probability that moved says what it was.
 | --- | --- |
 | `mjev query --file req.json [--bars]` | one request (or `--state` with `--noul/--choice/--score`, or stdin); the response as JSON, or with `--bars` as the TUI draws it |
 | `mjev gate [--policy P] [--json]` (the request as for `query`) | ask, then act, review or escalate on each answer and overall, as lines or JSON; exit 0 act, 10 review, 11 escalate, 1 an error ([`src/policy.md`](src/policy.md)): the smart `if` for a shell |
+| `mjev label [--input F] [--questions Q] [--policy P]` | the same questions over many states (JSONL or text lines), one JSON line out per state with its outcome; the counts on stderr ([`src/label.md`](src/label.md)) |
+| `mjev rank --query Q [--input F] [--top N]` | candidates ranked against a query, one Noul each, surest first ([`src/rank.md`](src/rank.md)) |
 | `mjev eval cases.jsonl [--rows R] [--limit N]` | a labelled case file: accuracy, Brier, ECE, coverage at 5 percent error, latency |
 | `mjev corroborate A B` | two recorded runs compared question by question |
 | `mjev models` | what the server serves |

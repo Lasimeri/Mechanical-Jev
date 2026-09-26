@@ -32,8 +32,8 @@ follows in its own `.md`.
 | an MCP server | `xks mcp` | covered |
 | calibration from labelled cases | `mjev eval`, `xks eval`, `xks condition`, `xks replay` | covered |
 | confidence-gated routing, composites, speculative answers ignored | [`src/policy.rs`](../src/policy.md), `mjev gate` (exit 0 act, 10 review, 11 escalate) | built |
-| the same questions over many states | `mjev label` | planned in this pass |
-| rank candidates against a query | `mjev rank` | planned in this pass |
+| the same questions over many states | [`src/label.rs`](../src/label.md), `mjev label` | built |
+| rank candidates against a query | [`src/rank.rs`](../src/rank.md), `mjev rank` | built |
 | thresholds from your own data, not copied | `mjev fit` | planned in this pass |
 | a record of every decision | `xks serve` with a decision log | planned in this pass |
 | guarding Claude Code's tool calls | a PreToolUse hook | planned in this pass, not installed |
