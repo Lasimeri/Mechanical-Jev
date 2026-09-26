@@ -25,8 +25,10 @@ pub fn xks() -> PathBuf {
     if let Some(p) = std::env::var_os("MJEV_XKS") {
         return PathBuf::from(p);
     }
+    // Through a link (`make install` puts one in ~/.local/bin), the file it
+    // links: anything derived from the path (the checkout) is then right.
     if let Some(p) = on_path("xks") {
-        return p;
+        return p.canonicalize().unwrap_or(p);
     }
     let here = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut bases: Vec<PathBuf> = here.parent().map(Path::to_path_buf).into_iter().collect();
@@ -54,7 +56,7 @@ pub fn find_sibling(bases: &[PathBuf], names: &[&str], probe: &str) -> Option<Pa
 }
 
 /// An executable file named `name` in a `PATH` directory.
-fn on_path(name: &str) -> Option<PathBuf> {
+pub fn on_path(name: &str) -> Option<PathBuf> {
     use std::os::unix::fs::PermissionsExt;
     std::env::split_paths(&std::env::var_os("PATH")?)
         .map(|d| d.join(name))

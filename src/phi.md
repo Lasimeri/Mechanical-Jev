@@ -35,7 +35,10 @@ served on the cards site (devices Phi and CPU).
 In order, the first that exists:
 
 1. `MJEV_XKS`, a path to the binary.
-2. `xks` on `PATH`.
+2. `xks` on `PATH`, resolved through a link to the file it links (Intel
+   Phi Jev's `make install` puts one in `~/.local/bin`), so the checkout
+   derived from it is the real one. `on_path` is public: `mjev doctor`
+   ([`doctor.md`](doctor.md)) uses it for `mjev` itself.
 3. `target/release/xks` in a checkout next to this one, named
    `Intel-Phi-Jev` (a `git clone`) or `Intel Phi Jev`.
 4. The same two names in `$HOME`.

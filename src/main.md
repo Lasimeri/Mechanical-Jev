@@ -24,3 +24,8 @@ the last `|` starts the options, so instructions may contain `|`; options
 or levels are separated by `;` when there is one (so a description may
 contain commas), else by `,`. An empty option, an option without a key,
 and a key given twice are errors.
+
+`doctor` is dispatched right after the client is built and before
+`phi::ensure`, so it never starts the server; it prints its report
+([`doctor.md`](doctor.md)) and exits 0 ready, 1 not. `--prefix` takes
+`~/` for the home directory (default `~/.local`).

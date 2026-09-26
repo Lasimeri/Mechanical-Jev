@@ -90,6 +90,19 @@ enum Cmd {
     Serve,
     /// Stop Intel Phi Jev's server and release the Phi cards.
     Stop,
+    /// The family's setup check: mjev, Intel Phi Jev's xks (and its own
+    /// `xks doctor`, down to the cards), the server; what is missing and
+    /// the fix for each. Starts nothing. Exit 0 ready, 1 not.
+    Doctor {
+        /// Do the fixes that are a build or a link: xks built, mjev and xks
+        /// linked into PREFIX/bin, the payload built. Never a card, a
+        /// download or sudo.
+        #[arg(long)]
+        fix: bool,
+        /// Where --fix links the commands (PREFIX/bin).
+        #[arg(long, default_value = "~/.local")]
+        prefix: String,
+    },
     /// The terminal interface: write a state and questions, ask, read the
     /// answers as bars; the server started and stopped from the same screen.
     Tui {
@@ -192,6 +205,21 @@ fn run() -> Result<(), String> {
         return Ok(());
     }
     let client = Client::from_env();
+    // Before anything that could start the server (phi::ensure below).
+    if let Cmd::Doctor { fix, prefix } = &cmd {
+        let prefix = match prefix.strip_prefix("~/") {
+            Some(rest) => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest),
+            None => PathBuf::from(prefix),
+        };
+        println!(
+            "mjev doctor: Mechanical Jev at {}",
+            config::repo_root()
+                .map_or_else(|| "(not in a checkout)".into(), |p| p.display().to_string())
+        );
+        let (text, ready) = mechanical_jev::doctor::run(&client, *fix, &prefix);
+        print!("{text}");
+        std::process::exit(if ready { 0 } else { 1 });
+    }
     match cmd {
         // Starts nothing up front: the TUI starts the server when asked to.
         Cmd::Tui { file } => return mechanical_jev::tui::app::run(client, file),
@@ -251,6 +279,7 @@ fn run() -> Result<(), String> {
         | Cmd::Evidence { .. }
         | Cmd::Serve
         | Cmd::Stop
+        | Cmd::Doctor { .. }
         | Cmd::Tui { .. } => Ok(()),
     }
 }

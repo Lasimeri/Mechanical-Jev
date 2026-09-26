@@ -4,7 +4,7 @@
 MJEV := target/release/mjev
 PREFIX ?= $(HOME)/.local
 
-.PHONY: help build install uninstall tui query eval models reconstruct evidence tokenizers closeness serve stop test fmt clippy docs-check tool-check check clean
+.PHONY: help build setup doctor install uninstall tui query eval models reconstruct evidence tokenizers closeness serve stop test fmt clippy docs-check tool-check check clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-14s %s\n", $$1, $$2}'
@@ -12,10 +12,16 @@ help: ## Show this help
 build: ## Build mjev
 	cargo build --release
 
-install: build ## Link mjev into $(PREFIX)/bin (a link: every rebuild is what runs)
-	mkdir -p "$(PREFIX)/bin"
-	ln -sfn "$(CURDIR)/$(MJEV)" "$(PREFIX)/bin/mjev"
-	@echo "$(PREFIX)/bin/mjev -> $(CURDIR)/$(MJEV)"
+setup: build ## The whole family in one step: build and link mjev and xks, build what is missing, check down to the cards
+	$(MJEV) doctor --fix --prefix "$(PREFIX)"
+
+doctor: build ## What is missing for mjev to ask, and the fix for each (FIX=1 builds and links what it can)
+	$(MJEV) doctor --prefix "$(PREFIX)" $(if $(FIX),--fix)
+
+install: build ## Link mjev into $(PREFIX)/bin (a link: every rebuild is what runs; never over a file)
+	@mkdir -p "$(PREFIX)/bin"
+	@if [ -e "$(PREFIX)/bin/mjev" ] && [ ! -L "$(PREFIX)/bin/mjev" ]; then echo "$(PREFIX)/bin/mjev is a file, not a link: left alone"; exit 1; fi
+	@ln -sfn "$(CURDIR)/$(MJEV)" "$(PREFIX)/bin/mjev" && echo "$(PREFIX)/bin/mjev -> $(CURDIR)/$(MJEV)"
 
 uninstall: ## Remove that link (only a link, never a file)
 	@if [ -L "$(PREFIX)/bin/mjev" ]; then rm "$(PREFIX)/bin/mjev" && echo "removed $(PREFIX)/bin/mjev"; else echo "no link at $(PREFIX)/bin/mjev"; fi

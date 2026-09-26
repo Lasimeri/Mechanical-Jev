@@ -23,6 +23,7 @@ pub mod client;
 pub mod confidence;
 pub mod config;
 pub mod corroborate;
+pub mod doctor;
 pub mod eval;
 pub mod evidence;
 pub mod phi;

@@ -22,11 +22,19 @@ asks.
 ```sh
 # the server, cloned next to this checkout (see The repositories)
 git clone https://github.com/Lasimeri/Intel-Phi-Jev ../Intel-Phi-Jev
-make -C ../Intel-Phi-Jev build
 
-make build install  # mjev, linked at ~/.local/bin/mjev (PREFIX= to change; make uninstall)
+make setup          # build and link mjev and xks into ~/.local/bin, build what is missing,
+                    # and check everything down to the cards (PREFIX= to change)
 mjev                # the TUI; try: e, Enter, F5
 ```
+
+`make setup` is `mjev doctor --fix`: every step a question needs, in
+order (mjev, where questions go, Intel Phi Jev's `xks`, its llama.cpp
+build and subject, Intel-Phi-AVX512's payload, the cards, a server), one
+line each, and for anything missing the command that fixes it. It builds
+and links what it can and never boots a card, downloads a model or runs
+`sudo`: those it names. `mjev doctor` checks without changing anything,
+any time something stops working ([`src/doctor.md`](src/doctor.md)).
 
 The first question starts the server (`xks serve --detach`: it loads the
 model and puts the cards to work, under a minute); after that a question
@@ -94,6 +102,7 @@ edit, each probability that moved says what it was.
 | `mjev corroborate A B` | two recorded runs compared question by question |
 | `mjev models` | what the server serves |
 | `mjev tui [--file req.json]` | the terminal interface (see [Use it](#use-it)) |
+| `mjev doctor [--fix]` | the family's setup check: what asking needs, down to the cards, and the fix for what is missing; `--fix` (`make setup`) builds and links; exit 0 ready, 1 not |
 | `mjev serve` / `mjev stop` | start the server / stop it and release the cards |
 | `mjev reconstruct --file req.json` | what Jev most likely does with a request (offline): the document and each question's branch as the model reads it |
 | `mjev evidence` | Jev's published answers as a case file and rows, to measure a server against (`make closeness`) |

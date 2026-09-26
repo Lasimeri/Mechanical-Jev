@@ -23,5 +23,8 @@ Read `CONTRIBUTING.md` first; it is the authority. The non-obvious rules:
 - Sibling `.md` per code file, same change. No em or en dashes anywhere.
 - The server needs no key; a key, if ever set, lives in `mjev.local.conf`
   (ignored) and is never printed.
+- `make setup` / `mjev doctor [--fix]` is the family's one setup command:
+  it relays Intel-Phi-Jev's `xks doctor` (text as is, exit 0 ready, 1 not)
+  and never starts a server, boots a card, downloads or runs sudo.
 - Test data is TypeSafe's own documented examples, real text, or obviously
   artificial. `make check` before committing, push after.
