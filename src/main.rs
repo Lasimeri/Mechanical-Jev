@@ -11,7 +11,7 @@ use serde_json::{json, Map, Value};
 use mechanical_jev::client::Client;
 use mechanical_jev::policy::{self, Policy};
 use mechanical_jev::protocol::Request;
-use mechanical_jev::{config, corroborate, eval, fit, label, phi, rank, reconstruction};
+use mechanical_jev::{config, corroborate, eval, fit, guard, label, phi, rank, reconstruction};
 
 #[derive(Parser)]
 #[command(
@@ -189,6 +189,29 @@ enum Cmd {
     Serve,
     /// Stop Intel Phi Jev's server and release the Phi cards.
     Stop,
+    /// A Claude Code PreToolUse hook for Bash: reads the hook's input on
+    /// stdin, asks whether the command is risky, and has Claude Code ask
+    /// you when it surely is. Never starts a server; on any failure it
+    /// prints nothing and Claude Code's permissions run as always. Always
+    /// exits 0 (src/guard.md).
+    Guard {
+        /// Deny a surely risky command (Claude is told why) instead of
+        /// asking you.
+        #[arg(long)]
+        deny: bool,
+        /// Allow a surely safe command without the permission prompt.
+        #[arg(long)]
+        allow_safe: bool,
+        /// Other questions: a JSON file of Nouls whose yes means risky.
+        #[arg(long)]
+        questions: Option<PathBuf>,
+        /// A policy file for them (as for `gate`).
+        #[arg(long)]
+        policy: Option<PathBuf>,
+        /// Seconds to wait for the answer before staying out of the way.
+        #[arg(long, default_value_t = 20)]
+        timeout: u64,
+    },
     /// The family's setup check: mjev, Intel Phi Jev's xks (and its own
     /// `xks doctor`, down to the cards), the server; what is missing and
     /// the fix for each. Starts nothing. Exit 0 ready, 1 not.
@@ -347,6 +370,47 @@ fn run() -> Result<(), String> {
         let (text, ready) = mechanical_jev::doctor::run(&client, *fix, &prefix);
         print!("{text}");
         std::process::exit(if ready { 0 } else { 1 });
+    }
+    // Also before phi::ensure: a hook must never start a server.
+    if let Cmd::Guard {
+        deny,
+        allow_safe,
+        questions,
+        policy,
+        timeout,
+    } = &cmd
+    {
+        let said = (|| -> Result<Option<Value>, String> {
+            let q = match questions {
+                Some(p) => label::questions_of(
+                    serde_json::from_str(
+                        &std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?,
+                    )
+                    .map_err(|e| format!("{}: {e}", p.display()))?,
+                )?,
+                None => guard::questions(),
+            };
+            let p = match policy {
+                Some(path) => Policy::load(path)?,
+                None => Policy::default(),
+            };
+            let mut input = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)
+                .map_err(|e| format!("stdin: {e}"))?;
+            let c = guard::client(client, std::time::Duration::from_secs(*timeout));
+            let mode = guard::Mode {
+                deny: *deny,
+                allow_safe: *allow_safe,
+            };
+            guard::run(&c, &input, &q, &p, mode)
+        })();
+        match said {
+            Ok(Some(v)) => println!("{v}"),
+            Ok(None) => {}
+            // Out of the way: nothing on stdout, the reason on stderr.
+            Err(e) => eprintln!("mjev guard: {e}"),
+        }
+        std::process::exit(0);
     }
     match cmd {
         // Starts nothing up front: the TUI starts the server when asked to.
@@ -551,6 +615,7 @@ fn run() -> Result<(), String> {
         }
         Cmd::Corroborate { .. }
         | Cmd::Fit { .. }
+        | Cmd::Guard { .. }
         | Cmd::Reconstruct { .. }
         | Cmd::Evidence { .. }
         | Cmd::Serve

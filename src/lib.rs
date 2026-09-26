@@ -27,6 +27,7 @@ pub mod doctor;
 pub mod eval;
 pub mod evidence;
 pub mod fit;
+pub mod guard;
 pub mod label;
 pub mod phi;
 pub mod policy;

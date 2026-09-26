@@ -7,6 +7,8 @@ Intel Phi Jev's server on this machine; [`confidence`](confidence.md) has
 TypeSafe's confidence formulas; [`policy`](policy.md) turns answers into
 act, review or escalate by thresholds the caller owns (`mjev gate`, and
 what people use Jev for: [`docs/uses.md`](../docs/uses.md));
+[`label`](label.md), [`rank`](rank.md), [`fit`](fit.md) and [`guard`](guard.md)
+put it to work (bulk, ranking, thresholds, a Claude Code hook);
 [`eval`](eval.md) scores labelled case
 files; [`corroborate`](corroborate.md) compares two recorded runs;
 [`evidence`](evidence.md) turns Jev's published answers into case and row

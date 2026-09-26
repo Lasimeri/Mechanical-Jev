@@ -35,8 +35,8 @@ follows in its own `.md`.
 | the same questions over many states | [`src/label.rs`](../src/label.md), `mjev label` | built |
 | rank candidates against a query | [`src/rank.rs`](../src/rank.md), `mjev rank` | built |
 | thresholds from your own data, not copied | [`src/fit.rs`](../src/fit.md), `mjev fit` | built |
-| a record of every decision | `xks serve` with a decision log | planned in this pass |
-| guarding Claude Code's tool calls | a PreToolUse hook | planned in this pass, not installed |
+| a record of every decision | Intel Phi Jev's `xks serve --decision-log` ([`decisions.md`](https://github.com/Lasimeri/Intel-Phi-Jev/blob/main/src/decisions.md)): marks of the state and questions, the answers | built |
+| guarding Claude Code's tool calls | [`src/guard.rs`](../src/guard.md), `mjev guard`, a PreToolUse hook: asks you before a surely risky Bash command | built, not installed |
 | real-time loops | | skipped: this hardware answers in seconds (the 2B 0.65 to 2.1 s on x86 for `mjev gate`, the 35B 7 to 45 s in the subprojects), not 70 to 500 ms |
 | context compaction for coding agents | | skipped: DigitalOcean notes it discards the warm cache it would save |
 | text extraction | | skipped: Jev does not generate (TypeSafe's jaggedness notes, "Generation"); code or an LLM extracts, a Choice picks |

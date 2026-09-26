@@ -63,3 +63,8 @@ server can be started. `label` writes one JSON line per state (to
 `fit` ([`fit.rs`](fit.md)) is offline like `corroborate`: dispatched
 before the client exists, it reads rows, prints the report (or `--json`)
 and writes the suggested policy to `--out`; `--target` must be 0.5 to 1.
+
+`guard` ([`guard.rs`](guard.md)) is dispatched right after `doctor`, before
+`phi::ensure`: a hook never starts a server. It reads the hook's JSON on
+stdin, prints the hook's decision or nothing, and always exits 0 (a
+failure's reason goes to stderr).
