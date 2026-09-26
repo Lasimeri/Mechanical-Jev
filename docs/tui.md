@@ -94,7 +94,18 @@ filled cells `█`, copper for the chosen option and `#7a5c38` (the site's
 - The terminal is restored on exit and on a panic of the drawing thread; a
   job's panic becomes an error on the status row (`term.rs`).
 - Quitting leaves the server running, as the command line does; when it
-  is up, a line on exit says so and that `mjev stop` releases the cards.
+  is up, a line on exit says so, when it stops itself (`/health`'s
+  `kill_date_s` and `idle_s`: "until it stops itself after 30 min
+  without a question (in 27 min)") and that `mjev stop` ends it now. The
+  server screen's `stops` row says the same. The health check is not a
+  question to the server: an open TUI does not keep an idle one alive
+  (Intel Phi Jev's `server.md`). Driven 2026-09-25 in tmux: a server
+  started from the server screen with `XKS_KILL_DATE=120` showed "after
+  2 min without a question (in 2 min)", the quit line said so, and it
+  stopped itself two minutes later with both cards released.
+- The examples list marks a Noul that defines its own true and false
+  ("noul, defined"), and the detail pane shows both: two of TypeSafe's
+  examples differ only by that and read as the same row twice.
 
 ## Not in the first version
 

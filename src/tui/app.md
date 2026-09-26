@@ -23,7 +23,13 @@ screen. A worker that panics becomes an error message, not a torn screen
 
 The health check (`GET /health`, 2 s) runs every 5 s while no job runs,
 for a server on this machine only: a remote one is asked directly and
-shown as remote.
+shown as remote. It reads `Health` (the subject, and from an xks of
+2026-09-25 on its `kill_date_s` and `idle_s`); `Server::stops` turns the
+last two into "after 30 min without a question (in 27 min)", or "never
+by itself" for a kill date of 0, and nothing for an older xks that does
+not send them or a server that is down. The server screen shows it as
+`stops`, and `run` puts it in the line it prints at quit when the server
+is still up.
 
 ## Jev beside the local answer
 

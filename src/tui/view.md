@@ -24,7 +24,10 @@ edit to the instructions or the state changed the reading. A Score's expected le
   the options' hint follows the kind.
 - **examples**: TypeSafe's published requests, one row each (ids, kinds,
   the state's first line), where the selected one is from and its note.
-- **server**: address, state, subject, models, which `xks`, where the logs
+  A Noul with its own true and false is "noul, defined" in the kinds and
+  shows both under its question in the detail.
+- **server**: address, state, subject, models, when it stops itself
+  (`stops`, `Server::stops`), which `xks`, where the logs
   are, and the last lines `xks` wrote; while Intel Phi Jev is not built,
   how to build it instead. Home shows the same note, its last row
   pointing here when it does not fit. Long words (paths) are broken

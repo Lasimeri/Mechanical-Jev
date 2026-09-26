@@ -292,6 +292,59 @@ pub struct Server {
     pub models: Vec<String>,
     /// The last lines `xks` wrote, or the last error in full.
     pub log: String,
+    /// The server's kill date and its time since the last question, in
+    /// seconds, from the last health check (`None` from a server that
+    /// does not say: a remote one, or an older xks).
+    pub kill_date: Option<u64>,
+    pub idle: Option<u64>,
+}
+
+impl Server {
+    /// When the server stops itself, as a person reads it: "after 30 min
+    /// without a question (in 27 min)", or that it never does. `None`
+    /// when it is not up or does not say.
+    pub fn stops(&self) -> Option<String> {
+        if self.up != Some(true) {
+            return None;
+        }
+        match (self.kill_date?, self.idle.unwrap_or(0)) {
+            (0, _) => {
+                Some("never by itself (XKS_KILL_DATE=0 in Intel Phi Jev's xks.local.conf)".into())
+            }
+            (k, idle) => Some(format!(
+                "after {} without a question (in {})",
+                span(k),
+                span(k.saturating_sub(idle))
+            )),
+        }
+    }
+}
+
+/// Seconds as a person reads them: minutes when there are some.
+pub fn span(s: u64) -> String {
+    if s >= 60 {
+        format!("{} min", s.div_ceil(60))
+    } else {
+        format!("{s} s")
+    }
+}
+
+/// What a health check reads from the server.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Health {
+    pub subject: String,
+    pub kill_date: Option<u64>,
+    pub idle: Option<u64>,
+}
+
+impl Health {
+    pub fn from_value(v: &serde_json::Value) -> Self {
+        Self {
+            subject: v["subject"].as_str().unwrap_or_default().to_string(),
+            kill_date: v["kill_date_s"].as_u64(),
+            idle: v["idle_s"].as_u64(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -305,7 +358,7 @@ enum Msg {
     /// What the job does now; `true` while it starts the server, whose
     /// log then shows as progress.
     Phase(String, bool),
-    Health(Result<String, String>),
+    Health(Result<Health, String>),
     Models(Result<Vec<String>, String>),
     Asked(Result<Box<Asked>, String>),
     Started(Result<String, String>),
@@ -1197,7 +1250,7 @@ impl App {
             Msg::Health(
                 client
                     .health()
-                    .map(|v| v["subject"].as_str().unwrap_or_default().to_string())
+                    .map(|v| Health::from_value(&v))
                     .map_err(|e| e.to_string()),
             )
         });
@@ -1215,14 +1268,18 @@ impl App {
                 self.health_pending = false;
                 self.last_health = Some(Instant::now());
                 match r {
-                    Ok(subject) => {
+                    Ok(h) => {
                         self.server.up = Some(true);
-                        self.server.subject = subject;
+                        self.server.subject = h.subject;
+                        self.server.kill_date = h.kill_date;
+                        self.server.idle = h.idle;
                     }
                     Err(_) => {
                         self.server.up = Some(false);
                         self.server.subject.clear();
                         self.server.models.clear();
+                        self.server.kill_date = None;
+                        self.server.idle = None;
                     }
                 }
             }
@@ -1359,9 +1416,13 @@ pub fn run(client: Client, file: Option<PathBuf>) -> Result<(), String> {
         eprintln!("mjev: {e}");
     }
     if app.bind.is_some() && app.server.up == Some(true) {
+        let until = app
+            .server
+            .stops()
+            .map(|s| format!(", until it stops itself {s}"))
+            .unwrap_or_default();
         eprintln!(
-            "mjev: the server on {} is still running (on the cards it holds their memory); \
-             mjev stop ends it and releases them",
+            "mjev: the server on {} keeps the model loaded{until}; mjev stop ends it now",
             app.client.base
         );
     }
@@ -1765,5 +1826,40 @@ mod tests {
         a.state.insert_str("a\tb\x1b[31mc\r\n");
         a.ask_path(PromptFor::Write);
         fits(&mut a, "a long state with control characters, a prompt");
+    }
+
+    #[test]
+    fn the_server_says_when_it_stops_itself() {
+        let h = Health::from_value(&serde_json::json!({
+            "status": "ok", "subject": "artichoke/m", "kill_date_s": 1800, "idle_s": 180
+        }));
+        assert_eq!(h.kill_date, Some(1800));
+        let mut s = Server {
+            up: Some(true),
+            kill_date: h.kill_date,
+            idle: h.idle,
+            ..Server::default()
+        };
+        assert_eq!(
+            s.stops().as_deref(),
+            Some("after 30 min without a question (in 27 min)")
+        );
+        s.idle = Some(1770);
+        assert_eq!(
+            s.stops().as_deref(),
+            Some("after 30 min without a question (in 30 s)")
+        );
+        s.kill_date = Some(0);
+        assert!(s.stops().unwrap().starts_with("never by itself"));
+        // An older xks says nothing of it, and a server that is down
+        // stops nothing.
+        let old = Health::from_value(&serde_json::json!({"status": "ok", "subject": "x"}));
+        assert_eq!((old.kill_date, old.idle), (None, None));
+        s.kill_date = old.kill_date;
+        assert_eq!(s.stops(), None);
+        s.kill_date = Some(1800);
+        s.up = Some(false);
+        assert_eq!(s.stops(), None);
+        assert_eq!(span(61), "2 min");
     }
 }

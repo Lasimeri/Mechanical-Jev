@@ -38,8 +38,10 @@ any time something stops working ([`src/doctor.md`](src/doctor.md)).
 
 The first question starts the server (`xks serve --detach`: it loads the
 model and puts the cards to work, under a minute); after that a question
-takes seconds. Quitting leaves it running, as every command does:
-`mjev stop` ends it and gives the cards their memory back.
+takes seconds. Quitting leaves it running, as every command does, and
+it stops itself after 30 minutes without a question (Intel Phi Jev's
+`XKS_KILL_DATE`), giving the host's memory and the cards back; the next
+question starts it again. `mjev stop` ends it at once.
 
 From the command line, and for development:
 

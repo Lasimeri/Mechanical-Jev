@@ -660,6 +660,14 @@ fn examples(f: &mut Frame, a: &App) {
                     pad(2),
                     text(summary(&instr)),
                 ]);
+                // A Noul's own true and false, when it defines them.
+                if let Some(c) = q["criteria"].as_object().filter(|_| q["type"] == "noul") {
+                    for k in ["true", "false"] {
+                        if let Some(v) = c.get(k).and_then(|v| v.as_str()) {
+                            d.push(vec![pad(32), dim(cell(k, 6)), pad(2), dim(summary(v))]);
+                        }
+                    }
+                }
             }
             d
         })
@@ -679,11 +687,20 @@ fn examples(f: &mut Frame, a: &App) {
         let sel = i == a.ex_sel;
         let bg = if sel { theme::SURFACE } else { theme::BG };
         let ids: Vec<&str> = e.request.questions.keys().map(String::as_str).collect();
-        let kinds: Vec<&str> = e
+        // A Noul that defines its own true and false says so: two of
+        // TypeSafe's examples differ only by that, and read as one row twice.
+        let kinds: Vec<String> = e
             .request
             .questions
             .values()
-            .filter_map(|q| q["type"].as_str())
+            .filter_map(|q| {
+                let t = q["type"].as_str()?;
+                Some(if t == "noul" && q["criteria"].is_object() {
+                    "noul, defined".to_string()
+                } else {
+                    t.to_string()
+                })
+            })
             .collect();
         let state = match &e.request.state {
             serde_json::Value::String(s) => s.lines().next().unwrap_or_default().to_string(),
@@ -761,6 +778,12 @@ fn server(f: &mut Frame, a: &App) {
             } else {
                 a.server.models.join(", ")
             },
+        ),
+        (
+            "stops",
+            a.server
+                .stops()
+                .unwrap_or_else(|| "when it is up: after its kill date".into()),
         ),
         ("xks", format!("{} ({built})", a.xks.display())),
         ("server log", crate::phi::serve_log().display().to_string()),
