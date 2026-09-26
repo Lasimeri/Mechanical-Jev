@@ -329,6 +329,19 @@ pub fn span(s: u64) -> String {
     }
 }
 
+/// The status line when a server that was up is found gone: stopped by
+/// its kill date when the last check had it within a check of it, else
+/// just gone (stopped elsewhere, or it failed: the log has why).
+pub fn gone_note(kill_date: Option<u64>, idle: Option<u64>) -> String {
+    match (kill_date, idle) {
+        (Some(k), Some(i)) if k > 0 && i + 10 >= k => format!(
+            "the server stopped itself after {} without a question; asking starts it again",
+            span(k)
+        ),
+        _ => "the server is down (its log is on / server); asking starts it again".into(),
+    }
+}
+
 /// What a health check reads from the server.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Health {
@@ -551,6 +564,13 @@ impl App {
     fn info(&mut self, s: impl Into<String>) {
         self.status = Some((s.into(), false));
         self.status_at = Some(Instant::now());
+    }
+
+    /// Information that stays until something replaces it: for what
+    /// happened while nobody was looking (the server stopping itself).
+    fn note(&mut self, s: impl Into<String>) {
+        self.status = Some((s.into(), false));
+        self.status_at = None;
     }
 
     /// An error: its first line on the status row; the whole of a longer
@@ -1275,6 +1295,12 @@ impl App {
                         self.server.idle = h.idle;
                     }
                     Err(_) => {
+                        // Up at the last check and gone now, with nothing
+                        // here stopping it: say so, and why when its kill
+                        // date was due, rather than only turn the header.
+                        if self.server.up == Some(true) && self.job.is_none() {
+                            self.note(gone_note(self.server.kill_date, self.server.idle));
+                        }
                         self.server.up = Some(false);
                         self.server.subject.clear();
                         self.server.models.clear();
@@ -1861,5 +1887,29 @@ mod tests {
         s.up = Some(false);
         assert_eq!(s.stops(), None);
         assert_eq!(span(61), "2 min");
+    }
+
+    #[test]
+    fn a_server_gone_by_its_kill_date_is_said_to_have_stopped_itself() {
+        let mut a = app();
+        a.apply(Msg::Health(Ok(Health {
+            subject: "artichoke/m".into(),
+            kill_date: Some(1800),
+            idle: Some(1795),
+        })));
+        a.apply(Msg::Health(Err("refused".into())));
+        let (s, error) = a.status.clone().unwrap();
+        assert!(!error);
+        assert!(
+            s.starts_with("the server stopped itself after 30 min"),
+            "{s}"
+        );
+        // It stays: the kill date fires while nobody is looking.
+        assert_eq!(a.status_at, None);
+        a.tick();
+        assert!(a.status.is_some());
+        // Gone some other way, it says only that it is down.
+        assert!(gone_note(Some(1800), Some(60)).starts_with("the server is down"));
+        assert!(gone_note(None, None).starts_with("the server is down"));
     }
 }

@@ -103,6 +103,13 @@ filled cells `█`, copper for the chosen option and `#7a5c38` (the site's
   started from the server screen with `XKS_KILL_DATE=120` showed "after
   2 min without a question (in 2 min)", the quit line said so, and it
   stopped itself two minutes later with both cards released.
+- A server that was up and is found gone with no job of the TUI's
+  stopping it gets a status line that stays until something replaces it
+  (`note`, `gone_note`): "the server stopped itself after 30 min without
+  a question; asking starts it again" when its kill date was due at the
+  last check, else that it is down and where its log is. The kill date
+  fires while nobody is looking, so an 8 s info line would be missed.
+  Driven 2026-09-26: `XKS_KILL_DATE=30`, the line still there 20 s after.
 - The examples list marks a Noul that defines its own true and false
   ("noul, defined"), and the detail pane shows both: two of TypeSafe's
   examples differ only by that and read as the same row twice.
