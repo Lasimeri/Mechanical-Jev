@@ -9,6 +9,7 @@ use clap::{CommandFactory, Parser, Subcommand};
 use serde_json::{json, Map, Value};
 
 use mechanical_jev::client::Client;
+use mechanical_jev::policy::{self, Policy};
 use mechanical_jev::protocol::Request;
 use mechanical_jev::{config, corroborate, eval, phi, reconstruction};
 
@@ -24,29 +25,59 @@ struct Cli {
     cmd: Option<Cmd>,
 }
 
+/// One request: a JSON file (--file), stdin, or --state with
+/// --noul/--choice/--score. Shared by `query` and `gate`.
+#[derive(clap::Args, Clone)]
+struct Ask {
+    #[arg(long)]
+    file: Option<PathBuf>,
+    #[arg(long)]
+    state: Option<String>,
+    /// id=instructions
+    #[arg(long)]
+    noul: Vec<String>,
+    /// id=instructions|key1:desc,key2:desc (`;` between options when a
+    /// description has commas; the last `|` starts the options)
+    #[arg(long)]
+    choice: Vec<String>,
+    /// id=instructions|level0,level1,level2 (`;` between levels when one
+    /// has commas)
+    #[arg(long)]
+    score: Vec<String>,
+}
+
+impl Ask {
+    fn request(self) -> Result<Request, String> {
+        build_request(self.file, self.state, self.noul, self.choice, self.score)
+    }
+}
+
 #[derive(Subcommand)]
 enum Cmd {
     /// One request: a JSON file (--file), stdin, or --state with
     /// --noul/--choice/--score.
     Query {
-        #[arg(long)]
-        file: Option<PathBuf>,
-        #[arg(long)]
-        state: Option<String>,
-        /// id=instructions
-        #[arg(long)]
-        noul: Vec<String>,
-        /// id=instructions|key1:desc,key2:desc (`;` between options when a
-        /// description has commas; the last `|` starts the options)
-        #[arg(long)]
-        choice: Vec<String>,
-        /// id=instructions|level0,level1,level2 (`;` between levels when one
-        /// has commas)
-        #[arg(long)]
-        score: Vec<String>,
+        #[command(flatten)]
+        ask: Ask,
         /// Print the answers as bars, as the TUI draws them, not JSON.
         #[arg(long)]
         bars: bool,
+    },
+    /// Ask, then judge the answers: act, review or escalate, the exit code
+    /// 0, 10 or 11 (1 is an error, never a decision). Thresholds from
+    /// --policy (src/policy.md), else TypeSafe's worked examples: a Noul
+    /// acts at 0.9 or 0.1; a Choice or Score escalates under confidence
+    /// 0.5 and acts from 0.9.
+    Gate {
+        #[command(flatten)]
+        ask: Ask,
+        /// A policy file: thresholds per question, answers to ignore,
+        /// weighted composites.
+        #[arg(long)]
+        policy: Option<PathBuf>,
+        /// The verdict as JSON, not lines.
+        #[arg(long)]
+        json: bool,
     },
     /// Score a labelled JSONL case file with Jev: accuracy, Brier, ECE,
     /// coverage, latency.
@@ -225,18 +256,41 @@ fn run() -> Result<(), String> {
         Cmd::Tui { file } => return mechanical_jev::tui::app::run(client, file),
         Cmd::Serve => return phi::serve(&client),
         Cmd::Stop => return phi::stop(),
-        _ => phi::ensure(&client)?,
+        _ => {}
     }
+    // What a command sends is read and checked before the server can be
+    // started (phi::ensure: a model load), so a mistake costs a moment.
+    let request = match &cmd {
+        Cmd::Query { ask, .. } | Cmd::Gate { ask, .. } => Some(ask.clone().request()?),
+        _ => None,
+    };
+    let gate_policy = match (&cmd, &request) {
+        (Cmd::Gate { policy, .. }, Some(req)) => {
+            let p = match policy {
+                Some(path) => Policy::load(path)?,
+                None => Policy::default(),
+            };
+            p.check_questions(&policy::asked(req)?)?;
+            Some(p)
+        }
+        _ => None,
+    };
+    phi::ensure(&client)?;
     match cmd {
-        Cmd::Query {
-            file,
-            state,
-            noul,
-            choice,
-            score,
-            bars,
-        } => {
-            let req = build_request(file, state, noul, choice, score)?;
+        Cmd::Gate { json, .. } => {
+            let (req, p) = request.zip(gate_policy).ok_or("no request was read")?;
+            let (resp, took) = client.system_one(&req).map_err(|e| e.to_string())?;
+            let v = p.judge(&policy::asked(&req)?, &resp)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&v).unwrap());
+            } else {
+                print!("{}", policy::text(&v));
+            }
+            eprintln!("{}: {:.1} ms", resp.model, took.as_secs_f64() * 1e3);
+            std::process::exit(v.outcome.exit_code());
+        }
+        Cmd::Query { bars, .. } => {
+            let req = request.ok_or("no request was read")?;
             let (resp, took) = client.system_one(&req).map_err(|e| e.to_string())?;
             if bars {
                 let text = mechanical_jev::tui::model::answers_text(&req, &resp.answers, 30);

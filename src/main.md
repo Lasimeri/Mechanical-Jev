@@ -29,3 +29,24 @@ and a key given twice are errors.
 `phi::ensure`, so it never starts the server; it prints its report
 ([`doctor.md`](doctor.md)) and exits 0 ready, 1 not. `--prefix` takes
 `~/` for the home directory (default `~/.local`).
+
+## gate
+
+`gate` asks as `query` does (the same flags, `Ask`) and judges the
+answers with a policy ([`policy.rs`](policy.md)): one line per answer
+(its value, decision and outcome, and the threshold it was measured
+against), composites with their dimensions, then the overall outcome;
+`--json` prints the verdict whole. The exit code is the outcome: 0 act,
+10 review, 11 escalate; 1 stays an error (the server unreachable, a bad
+file, a policy naming a question the request does not ask) and 2 clap's
+usage error, so a shell `if mjev gate ...` never mistakes a failure for a
+decision. The request and the policy are read and checked before the
+server can be started, as `query`'s request now is too: a mistake in
+either costs a moment, not a model load.
+
+Driven 2026-09-26 against the 2B at 127.0.0.1:8095, on TypeSafe's own
+support-ticket example (the Stripe integration message of their
+primitives page) with its three questions: exit 11, the frustration Score
+escalated at confidence 0.25; with a policy file, the speculative Noul
+reported and ignored, a composite of 0.64 acting; a policy typo exit 1
+before any call; an unreachable server exit 1.

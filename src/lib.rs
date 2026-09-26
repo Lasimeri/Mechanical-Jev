@@ -27,6 +27,7 @@ pub mod doctor;
 pub mod eval;
 pub mod evidence;
 pub mod phi;
+pub mod policy;
 pub mod protocol;
 pub mod reconstruction;
 pub mod tui;
