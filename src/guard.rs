@@ -41,6 +41,9 @@ pub struct Mode {
     /// A surely safe command is allowed without the prompt. Off by
     /// default: it hands a permission to the model's reading.
     pub allow_safe: bool,
+    /// Ask a server that is not on this machine. Off by default: every
+    /// command Claude Code runs would go to it.
+    pub remote: bool,
 }
 
 /// The hook's stdout for a risk, or nothing (Claude Code's own
@@ -85,6 +88,12 @@ pub fn run(
     let Some(command) = c.command.filter(|_| c.tool == "Bash") else {
         return Ok(None);
     };
+    if !mode.remote && crate::phi::local_bind(&client.base).is_none() {
+        return Err(format!(
+            "{} is not on this machine; the guard does not send your commands elsewhere (--remote to allow)",
+            client.base
+        ));
+    }
     client
         .health()
         .map_err(|e| format!("no server answers: {e}"))?;
@@ -271,5 +280,29 @@ mod tests {
         let edit = r#"{"tool_name": "Edit", "tool_input": {"file_path": "/x"}}"#;
         assert_eq!(run(&c, edit, &q, &p, Mode::default()), Ok(None));
         assert!(run(&c, "not json", &q, &p, Mode::default()).is_err());
+    }
+
+    #[test]
+    fn commands_are_never_sent_off_this_machine_unless_asked() {
+        let hosted = client(
+            Client {
+                base: "https://api.typesafe.ai".into(),
+                api_key: None,
+                model: "jev-latest".into(),
+                attempts: 1,
+                timeout: Duration::from_secs(1),
+            },
+            Duration::from_secs(1),
+        );
+        let bash = r#"{"tool_name": "Bash", "tool_input": {"command": "ls"}, "cwd": "/"}"#;
+        let err = run(
+            &hosted,
+            bash,
+            &questions(),
+            &Policy::default(),
+            Mode::default(),
+        )
+        .unwrap_err();
+        assert!(err.contains("not on this machine"), "{err}");
     }
 }

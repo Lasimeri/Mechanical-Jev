@@ -68,3 +68,7 @@ and writes the suggested policy to `--out`; `--target` must be 0.5 to 1.
 `phi::ensure`: a hook never starts a server. It reads the hook's JSON on
 stdin, prints the hook's decision or nothing, and always exits 0 (a
 failure's reason goes to stderr).
+
+`query` and `gate` with no request flags at a terminal say what is
+missing at once instead of waiting on stdin, as `label` and `rank` do
+(`read_input`).

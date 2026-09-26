@@ -5,7 +5,11 @@ runs, it asks Jev whether the command is risky and, when the answer is a
 sure yes, has Claude Code ask you first. It is the "guard tool calls"
 pattern people use Jev for (LangChain's AutoModeMiddleware, Nym's
 reviewers, Akka's tool guardrail; [`docs/uses.md`](../docs/uses.md)),
-pointed at the local Jev: the commands never leave this machine.
+pointed at the local Jev: the commands never leave this machine. That
+holds by construction, not by configuration: a server that is not on
+this machine (`phi::local_bind` of the configured address) makes the
+guard step aside unless `--remote` is given, so a `TYPESAFE_BASE_URL`
+set to the hosted Jev never sends it every command Claude Code runs.
 
 It is not installed by anything here. To use it, add to
 `~/.claude/settings.json` (or a project's `.claude/settings.json`):
@@ -81,3 +85,20 @@ yes risky, every sure no safe, the rest unsure; only a sure risk speaking
 (`ask`, or `deny`), `allow` only when asked for; a server that does not
 answer an error (the caller prints nothing), another tool nothing, bad
 input an error; the questions accepted by the server's checks.
+
+## What it costs
+
+- It works only while a server is up; after Intel Phi Jev's kill date
+  (30 minutes without a question) it steps aside until something starts
+  the server again. Its own questions count as questions, so while Claude
+  Code keeps running commands the server, and the 35B's 11 to 13 GiB of
+  host memory with it, stays up.
+- 4.3 s per Bash command on the 35B, 1.5 s on the 2B (which cannot tell
+  the commands apart, above).
+- It fails open, by design: commands asked about at once queue on the one
+  engine, and one that waits past `--timeout` passes unchecked.
+- `--allow-safe` allowed nothing in the runs above: `outside` never came
+  under 0.1 for the harmless commands (0.12 to 0.14 on the 35B), so none
+  was surely safe. A policy with a higher `no_at` for `outside` would
+  change that, which is a decision to make on your own commands (`mjev
+  eval` and [`fit.rs`](fit.md)).

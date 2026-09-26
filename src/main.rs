@@ -211,6 +211,10 @@ enum Cmd {
         /// Seconds to wait for the answer before staying out of the way.
         #[arg(long, default_value_t = 20)]
         timeout: u64,
+        /// Ask a server that is not on this machine (every command goes
+        /// to it); by default the guard steps aside for one.
+        #[arg(long)]
+        remote: bool,
     },
     /// The family's setup check: mjev, Intel Phi Jev's xks (and its own
     /// `xks doctor`, down to the cards), the server; what is missing and
@@ -378,6 +382,7 @@ fn run() -> Result<(), String> {
         questions,
         policy,
         timeout,
+        remote,
     } = &cmd
     {
         let said = (|| -> Result<Option<Value>, String> {
@@ -401,6 +406,7 @@ fn run() -> Result<(), String> {
             let mode = guard::Mode {
                 deny: *deny,
                 allow_safe: *allow_safe,
+                remote: *remote,
             };
             guard::run(&c, &input, &q, &p, mode)
         })();
@@ -654,10 +660,19 @@ fn build_request(
         return serde_json::from_str(&text).map_err(|e| e.to_string());
     }
     if state.is_none() && noul.is_empty() && choice.is_empty() && score.is_empty() {
+        // At a terminal with nothing piped, say what is missing rather
+        // than wait on stdin.
+        if std::io::stdin().is_terminal() {
+            return Err(
+                "no request: --file req.json, --state with --noul/--choice/--score, \
+                        or a JSON request piped on stdin"
+                    .into(),
+            );
+        }
         let mut text = String::new();
         std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
-            .map_err(|e| e.to_string())?;
-        return serde_json::from_str(&text).map_err(|e| e.to_string());
+            .map_err(|e| format!("stdin: {e}"))?;
+        return serde_json::from_str(&text).map_err(|e| format!("the request on stdin: {e}"));
     }
     let state = state.ok_or("--state is required with --noul/--choice/--score")?;
     let mut questions = Map::new();
