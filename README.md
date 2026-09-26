@@ -104,6 +104,7 @@ edit, each probability that moved says what it was.
 | `mjev label [--input F] [--questions Q] [--policy P]` | the same questions over many states (JSONL or text lines), one JSON line out per state with its outcome; the counts on stderr ([`src/label.md`](src/label.md)) |
 | `mjev rank --query Q [--input F] [--top N]` | candidates ranked against a query, one Noul each, surest first ([`src/rank.md`](src/rank.md)) |
 | `mjev eval cases.jsonl [--rows R] [--limit N]` | a labelled case file: accuracy, Brier, ECE, coverage at 5 percent error, latency |
+| `mjev fit ROWS [--target 0.95] [--out policy.json]` | thresholds from recorded answers (`eval --rows`) and what they should have been: where each question can be trusted, and a suggested policy (offline; [`src/fit.md`](src/fit.md)) |
 | `mjev corroborate A B` | two recorded runs compared question by question |
 | `mjev models` | what the server serves |
 | `mjev tui [--file req.json]` | the terminal interface (see [Use it](#use-it)) |

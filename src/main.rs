@@ -11,7 +11,7 @@ use serde_json::{json, Map, Value};
 use mechanical_jev::client::Client;
 use mechanical_jev::policy::{self, Policy};
 use mechanical_jev::protocol::Request;
-use mechanical_jev::{config, corroborate, eval, label, phi, rank, reconstruction};
+use mechanical_jev::{config, corroborate, eval, fit, label, phi, rank, reconstruction};
 
 #[derive(Parser)]
 #[command(
@@ -141,6 +141,23 @@ enum Cmd {
         #[arg(long)]
         limit: Option<usize>,
     },
+    /// Thresholds from recorded answers (`eval --rows`) and what they
+    /// should have been: where each question's answers can be trusted,
+    /// and a policy that acts only there. Offline: asks nothing
+    /// (src/fit.md).
+    Fit {
+        /// Rows from `mjev eval --rows`.
+        rows: PathBuf,
+        /// The share of acted-on answers that must be right.
+        #[arg(long, default_value_t = 0.95)]
+        target: f64,
+        /// Write the suggested policy here (for `gate` and `label`).
+        #[arg(long)]
+        out: Option<PathBuf>,
+        /// The report as JSON, not lines.
+        #[arg(long)]
+        json: bool,
+    },
     /// Compare two recorded runs question by question.
     Corroborate {
         a: PathBuf,
@@ -264,6 +281,35 @@ fn run() -> Result<(), String> {
             }))
             .unwrap()
         );
+        return Ok(());
+    }
+    if let Cmd::Fit {
+        rows,
+        target,
+        out,
+        json,
+    } = &cmd
+    {
+        if !(0.5..=1.0).contains(target) {
+            return Err(format!("--target is {target}; it must be 0.5 to 1"));
+        }
+        let r = read_rows(rows)?;
+        if r.is_empty() {
+            return Err(format!("{}: no rows", rows.display()));
+        }
+        let fitted = fit::fit(&r, *target);
+        if *json {
+            println!("{}", serde_json::to_string_pretty(&fitted).unwrap());
+        } else {
+            print!("{}", fit::text(&fitted, *target));
+        }
+        if let Some(p) = out {
+            let policy = fit::policy(&fitted);
+            policy.check()?;
+            std::fs::write(p, serde_json::to_string_pretty(&policy).unwrap() + "\n")
+                .map_err(|e| format!("{}: {e}", p.display()))?;
+            eprintln!("fit: the suggested policy is in {}", p.display());
+        }
         return Ok(());
     }
     if let Cmd::Corroborate {
@@ -504,6 +550,7 @@ fn run() -> Result<(), String> {
             Ok(())
         }
         Cmd::Corroborate { .. }
+        | Cmd::Fit { .. }
         | Cmd::Reconstruct { .. }
         | Cmd::Evidence { .. }
         | Cmd::Serve

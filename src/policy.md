@@ -53,9 +53,9 @@ A verdict's outcome is the worst of its deciding answers and composites.
 
 The built-in thresholds (0.9, 0.1, 0.5, 0.9) are TypeSafe's worked
 examples. `confidence.md` says plainly that the right values depend on
-the domain: start conservative, test on your own data, adjust (`mjev
-fit`, planned in [`docs/uses.md`](../docs/uses.md), is to suggest them from
-recorded answers and their outcomes).
+the domain: start conservative, test on your own data, adjust; `mjev
+fit` ([`fit.rs`](fit.md)) suggests them from recorded answers and what
+they should have been.
 
 ## A policy file
 

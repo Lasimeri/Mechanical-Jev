@@ -59,3 +59,7 @@ and no file is named), their questions and their policy before the
 server can be started. `label` writes one JSON line per state (to
 `--out` or stdout) and exits 1 when any state failed; `rank` prints
 `P  index  candidate` lines (or `--json`), `--top N` the best N.
+
+`fit` ([`fit.rs`](fit.md)) is offline like `corroborate`: dispatched
+before the client exists, it reads rows, prints the report (or `--json`)
+and writes the suggested policy to `--out`; `--target` must be 0.5 to 1.

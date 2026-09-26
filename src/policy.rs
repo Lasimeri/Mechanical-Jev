@@ -50,12 +50,16 @@ impl Outcome {
 #[serde(deny_unknown_fields)]
 pub struct Rule {
     /// Noul: at or above, a confident yes (0.9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub yes_at: Option<f64>,
     /// Noul: at or below, a confident no (0.1).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub no_at: Option<f64>,
     /// Choice and Score: confidence below this escalates (0.5).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub floor: Option<f64>,
     /// Choice and Score: confidence at or above this acts (0.9).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub act_at: Option<f64>,
     /// Choice: a stricter (or looser) `act_at` for one option: an
     /// irreversible option wants more confidence than a read-only one.
@@ -63,9 +67,10 @@ pub struct Rule {
     pub act_at_option: BTreeMap<String, f64>,
     /// Score: a threshold on the score itself; the decision is then
     /// `above` (at or above it) or `below`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub above: Option<f64>,
     /// An answer asked speculatively: reported, never deciding.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ignore: bool,
 }
 
@@ -86,11 +91,11 @@ pub struct Composite {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct Policy {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Rule::is_empty")]
     pub defaults: Rule,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub questions: BTreeMap<String, Rule>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub composites: BTreeMap<String, Composite>,
 }
 
@@ -152,6 +157,11 @@ fn check01(what: &str, v: Option<f64>) -> Result<(), String> {
 }
 
 impl Rule {
+    /// Nothing set: what a written policy leaves out.
+    pub fn is_empty(&self) -> bool {
+        *self == Rule::default()
+    }
+
     fn check(&self, at: &str) -> Result<(), String> {
         for (k, v) in [
             ("yes_at", self.yes_at),

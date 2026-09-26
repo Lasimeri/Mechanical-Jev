@@ -34,7 +34,7 @@ follows in its own `.md`.
 | confidence-gated routing, composites, speculative answers ignored | [`src/policy.rs`](../src/policy.md), `mjev gate` (exit 0 act, 10 review, 11 escalate) | built |
 | the same questions over many states | [`src/label.rs`](../src/label.md), `mjev label` | built |
 | rank candidates against a query | [`src/rank.rs`](../src/rank.md), `mjev rank` | built |
-| thresholds from your own data, not copied | `mjev fit` | planned in this pass |
+| thresholds from your own data, not copied | [`src/fit.rs`](../src/fit.md), `mjev fit` | built |
 | a record of every decision | `xks serve` with a decision log | planned in this pass |
 | guarding Claude Code's tool calls | a PreToolUse hook | planned in this pass, not installed |
 | real-time loops | | skipped: this hardware answers in seconds (the 2B 0.65 to 2.1 s on x86 for `mjev gate`, the 35B 7 to 45 s in the subprojects), not 70 to 500 ms |
