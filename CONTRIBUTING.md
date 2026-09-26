@@ -54,7 +54,9 @@ sections are the same in every repository of the family (see
 - What this repository consumes from Intel-Phi-Jev: `xks serve --detach
   --bind`, `xks stop`, `target/release/xks` (where a checkout's binary is
   looked for), `$XDG_RUNTIME_DIR/xks/serve.log` (read as a start's
-  progress), `/health`, `/v1/models` and the System One wire format.
+  progress), `/health`, `/v1/models`, the System One wire format, and
+  `xks doctor [--fix] --prefix P` (`mjev doctor` relays its text and takes
+  its exit code: 0 ready, 1 not).
 
 ## Git
 
