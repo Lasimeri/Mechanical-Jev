@@ -25,10 +25,21 @@ or levels are separated by `;` when there is one (so a description may
 contain commas), else by `,`. An empty option, an option without a key,
 and a key given twice are errors.
 
-`doctor` is dispatched right after the client is built and before
-`phi::ensure`, so it never starts the server; it prints its report
-([`doctor.md`](doctor.md)) and exits 0 ready, 1 not. `--prefix` takes
-`~/` for the home directory (default `~/.local`).
+`doctor` is dispatched before `phi::ensure`, so it never starts the
+server; it prints its report ([`doctor.md`](doctor.md)) and exits 0
+ready, 1 not. `--prefix` takes `~/` for the home directory (default
+`~/.local`).
+
+**Shape.** `run` parses the command line and dispatches once, in this
+order: the offline commands (`evidence`, `reconstruct`, `fit`,
+`corroborate`) return from their own functions before a client exists;
+`doctor` and `guard` get a client and exit without reaching
+`phi::ensure`; `tui`, `serve` and `stop` start nothing up front; every
+other command has its inputs read and checked into a `Job` (`Query`,
+`Gate`, `Label`, `Rank`, `Eval`, `Models`), and only then does
+`phi::ensure` run and `Job::run` ask the server. `policy_of` (a policy
+file, else the built-in thresholds) and `questions_file` serve `gate`,
+`label` and `guard` alike.
 
 ## gate
 

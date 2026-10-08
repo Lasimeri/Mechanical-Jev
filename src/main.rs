@@ -1,6 +1,6 @@
 //! `mjev`: TypeSafe's Jev from the command line. See main.md.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use std::io::IsTerminal;
@@ -246,7 +246,7 @@ fn main() {
     }
 }
 
-fn read_rows(p: &PathBuf) -> Result<Vec<eval::Row>, String> {
+fn read_rows(p: &Path) -> Result<Vec<eval::Row>, String> {
     std::fs::read_to_string(p)
         .map_err(|e| format!("{}: {e}", p.display()))?
         .lines()
@@ -271,179 +271,63 @@ fn run() -> Result<(), String> {
             )
             .exit(),
     };
-    if let Cmd::Evidence { out } = &cmd {
-        std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
-        let cases: String = mechanical_jev::evidence::cases()
-            .iter()
-            .map(|c| serde_json::to_string(c).unwrap() + "\n")
-            .collect();
-        let rows: String = mechanical_jev::evidence::jev_rows()
-            .iter()
-            .map(|r| serde_json::to_string(r).unwrap() + "\n")
-            .collect();
-        let (cf, rf) = (
-            out.join("evidence-cases.jsonl"),
-            out.join("evidence-jev-rows.jsonl"),
-        );
-        std::fs::write(&cf, cases).map_err(|e| e.to_string())?;
-        std::fs::write(&rf, rows).map_err(|e| e.to_string())?;
-        println!("{}\n{}", cf.display(), rf.display());
-        return Ok(());
-    }
-    if let Cmd::Reconstruct { file } = &cmd {
-        let req = build_request(file.clone(), None, Vec::new(), Vec::new(), Vec::new())?;
-        let plan = reconstruction::compile(&req)?;
-        let branches: Vec<Value> = plan
-            .branches
-            .iter()
-            .map(|b| json!({"id": b.id, "kind": format!("{:?}", b.kind), "reads": b.prompt, "outcomes": b.outcomes}))
-            .collect();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "preamble_tokens": reconstruction::PREAMBLE_TOKENS,
-                "document": plan.document,
-                "branches": branches,
-                "limits": {"state_plus_longest_question": reconstruction::BRANCH_LIMIT, "request": reconstruction::REQUEST_LIMIT},
-            }))
-            .unwrap()
-        );
-        return Ok(());
-    }
-    if let Cmd::Fit {
-        rows,
-        target,
-        out,
-        json,
-    } = &cmd
-    {
-        if !(0.5..=1.0).contains(target) {
-            return Err(format!("--target is {target}; it must be 0.5 to 1"));
-        }
-        let r = read_rows(rows)?;
-        if r.is_empty() {
-            return Err(format!("{}: no rows", rows.display()));
-        }
-        let fitted = fit::fit(&r, *target);
-        if *json {
-            println!("{}", serde_json::to_string_pretty(&fitted).unwrap());
-        } else {
-            print!("{}", fit::text(&fitted, *target));
-        }
-        if let Some(p) = out {
-            let policy = fit::policy(&fitted);
-            policy.check()?;
-            std::fs::write(p, serde_json::to_string_pretty(&policy).unwrap() + "\n")
-                .map_err(|e| format!("{}: {e}", p.display()))?;
-            eprintln!("fit: the suggested policy is in {}", p.display());
-        }
-        return Ok(());
-    }
-    if let Cmd::Corroborate {
-        a,
-        b,
-        pairs,
-        temperature,
-    } = &cmd
-    {
-        let (ra, rb) = (read_rows(a)?, read_rows(b)?);
-        let mut r = corroborate::compare(&ra, &rb);
-        if !pairs {
-            r.pairs.clear();
-        }
-        let mut v = serde_json::to_value(&r).unwrap();
-        if *temperature {
-            v["temperature"] =
-                serde_json::to_value(corroborate::fit_temperature(&ra, &rb)).unwrap();
-        }
-        println!("{}", serde_json::to_string_pretty(&v).unwrap());
-        return Ok(());
-    }
-    let client = Client::from_env();
-    // Before anything that could start the server (phi::ensure below).
-    if let Cmd::Doctor { fix, prefix } = &cmd {
-        let prefix = match prefix.strip_prefix("~/") {
-            Some(rest) => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest),
-            None => PathBuf::from(prefix),
-        };
-        println!(
-            "mjev doctor: Mechanical Jev at {}",
-            config::repo_root()
-                .map_or_else(|| "(not in a checkout)".into(), |p| p.display().to_string())
-        );
-        let (text, ready) = mechanical_jev::doctor::run(&client, *fix, &prefix);
-        print!("{text}");
-        std::process::exit(if ready { 0 } else { 1 });
-    }
-    // Also before phi::ensure: a hook must never start a server.
-    if let Cmd::Guard {
-        deny,
-        allow_safe,
-        questions,
-        policy,
-        timeout,
-        remote,
-    } = &cmd
-    {
-        let said = (|| -> Result<Option<Value>, String> {
-            let q = match questions {
-                Some(p) => label::questions_of(
-                    serde_json::from_str(
-                        &std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?,
-                    )
-                    .map_err(|e| format!("{}: {e}", p.display()))?,
-                )?,
-                None => guard::questions(),
-            };
-            let p = match policy {
-                Some(path) => Policy::load(path)?,
-                None => Policy::default(),
-            };
-            let mut input = String::new();
-            std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)
-                .map_err(|e| format!("stdin: {e}"))?;
-            let c = guard::client(client, std::time::Duration::from_secs(*timeout));
+    let job = match cmd {
+        // Offline: no client, no server.
+        Cmd::Evidence { out } => return cmd_evidence(&out),
+        Cmd::Reconstruct { file } => return cmd_reconstruct(file),
+        Cmd::Fit {
+            rows,
+            target,
+            out,
+            json,
+        } => return cmd_fit(&rows, target, out.as_deref(), json),
+        Cmd::Corroborate {
+            a,
+            b,
+            pairs,
+            temperature,
+        } => return cmd_corroborate(&a, &b, pairs, temperature),
+        // Before anything that could start the server (phi::ensure below).
+        Cmd::Doctor { fix, prefix } => cmd_doctor(&Client::from_env(), fix, &prefix),
+        // Also before phi::ensure: a hook must never start a server.
+        Cmd::Guard {
+            deny,
+            allow_safe,
+            questions,
+            policy,
+            timeout,
+            remote,
+        } => {
             let mode = guard::Mode {
-                deny: *deny,
-                allow_safe: *allow_safe,
-                remote: *remote,
+                deny,
+                allow_safe,
+                remote,
             };
-            guard::run(&c, &input, &q, &p, mode)
-        })();
-        match said {
-            Ok(Some(v)) => println!("{v}"),
-            Ok(None) => {}
-            // Out of the way: nothing on stdout, the reason on stderr.
-            Err(e) => eprintln!("mjev guard: {e}"),
+            cmd_guard(
+                Client::from_env(),
+                mode,
+                questions.as_deref(),
+                policy.as_deref(),
+                timeout,
+            )
         }
-        std::process::exit(0);
-    }
-    match cmd {
         // Starts nothing up front: the TUI starts the server when asked to.
-        Cmd::Tui { file } => return mechanical_jev::tui::app::run(client, file),
-        Cmd::Serve => return phi::serve(&client),
+        Cmd::Tui { file } => return mechanical_jev::tui::app::run(Client::from_env(), file),
+        Cmd::Serve => return phi::serve(&Client::from_env()),
         Cmd::Stop => return phi::stop(),
-        _ => {}
-    }
-    // What a command sends is read and checked before the server can be
-    // started (phi::ensure: a model load), so a mistake costs a moment.
-    let request = match &cmd {
-        Cmd::Query { ask, .. } | Cmd::Gate { ask, .. } => Some(ask.clone().request()?),
-        _ => None,
-    };
-    let gate_policy = match (&cmd, &request) {
-        (Cmd::Gate { policy, .. }, Some(req)) => {
-            let p = match policy {
-                Some(path) => Policy::load(path)?,
-                None => Policy::default(),
-            };
-            p.check_questions(&policy::asked(req)?)?;
-            Some(p)
+        // What a command sends is read and checked before the server can be
+        // started (phi::ensure: a model load), so a mistake costs a moment.
+        Cmd::Query { ask, bars } => Job::Query {
+            req: ask.request()?,
+            bars,
+        },
+        Cmd::Gate { ask, policy, json } => {
+            let req = ask.request()?;
+            let policy = policy_of(policy.as_deref())?;
+            policy.check_questions(&policy::asked(&req)?)?;
+            Job::Gate { req, policy, json }
         }
-        _ => None,
-    };
-    // label: its states, questions and policy; rank: its candidates.
-    let labelling = match &cmd {
+        // label: its states, questions and policy.
         Cmd::Label {
             input,
             text,
@@ -452,182 +336,376 @@ fn run() -> Result<(), String> {
             choice,
             score,
             policy,
-            ..
+            out,
         } => {
-            let items = label::items(&read_input(input.as_ref())?, *text);
+            let items = label::items(&read_input(input.as_ref())?, text);
             if items.is_empty() {
                 return Err("no states: every line of the input is empty".into());
             }
-            let mut q = match questions {
-                Some(p) => label::questions_of(
-                    serde_json::from_str(
-                        &std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?,
-                    )
-                    .map_err(|e| format!("{}: {e}", p.display()))?,
-                )?,
+            let mut q = match &questions {
+                Some(p) => questions_file(p)?,
                 None => Map::new(),
             };
             if !(noul.is_empty() && choice.is_empty() && score.is_empty()) {
-                let flags = build_request(
-                    None,
-                    Some(String::new()),
-                    noul.clone(),
-                    choice.clone(),
-                    score.clone(),
-                )?;
+                let flags = build_request(None, Some(String::new()), noul, choice, score)?;
                 q.extend(flags.questions);
             }
             if q.is_empty() {
                 return Err("no questions: --questions FILE, or --noul/--choice/--score".into());
             }
             mechanical_jev::protocol::parse_questions(&q)?;
-            let p = match policy {
-                Some(path) => Policy::load(path)?,
-                None => Policy::default(),
-            };
-            Some((items, q, p))
+            Job::Label {
+                items,
+                questions: q,
+                policy: policy_of(policy.as_deref())?,
+                out,
+            }
         }
-        _ => None,
-    };
-    let candidates = match &cmd {
-        Cmd::Rank { input, .. } => {
-            let c: Vec<String> = read_input(input.as_ref())?
+        // rank: its candidates.
+        Cmd::Rank {
+            query,
+            input,
+            top,
+            instructions,
+            json,
+        } => {
+            let candidates: Vec<String> = read_input(input.as_ref())?
                 .lines()
                 .map(str::trim)
                 .filter(|l| !l.is_empty())
                 .map(String::from)
                 .collect();
-            if c.is_empty() {
+            if candidates.is_empty() {
                 return Err("no candidates: every line of the input is empty".into());
             }
-            Some(c)
+            Job::Rank {
+                query,
+                candidates,
+                top,
+                instructions,
+                json,
+            }
         }
-        _ => None,
+        Cmd::Eval { file, rows, limit } => Job::Eval { file, rows, limit },
+        Cmd::Models => Job::Models,
     };
+    let client = Client::from_env();
     phi::ensure(&client)?;
-    match cmd {
-        Cmd::Label { out, .. } => {
-            let (items, q, p) = labelling.ok_or("no states were read")?;
-            let mut sink: Box<dyn std::io::Write> = match &out {
-                Some(path) => Box::new(
-                    std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?,
-                ),
-                None => Box::new(std::io::stdout().lock()),
-            };
-            let t0 = Instant::now();
-            let tty = std::io::stderr().is_terminal();
-            let tally = label::run(&client, &q, &p, &items, &mut sink, &mut |d, n| {
+    job.run(&client)
+}
+
+/// `evidence`: Jev's published answers as a case file and as eval rows,
+/// written into `out`.
+fn cmd_evidence(out: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(out).map_err(|e| e.to_string())?;
+    let cases: String = mechanical_jev::evidence::cases()
+        .iter()
+        .map(|c| serde_json::to_string(c).unwrap() + "\n")
+        .collect();
+    let rows: String = mechanical_jev::evidence::jev_rows()
+        .iter()
+        .map(|r| serde_json::to_string(r).unwrap() + "\n")
+        .collect();
+    let (cf, rf) = (
+        out.join("evidence-cases.jsonl"),
+        out.join("evidence-jev-rows.jsonl"),
+    );
+    std::fs::write(&cf, cases).map_err(|e| e.to_string())?;
+    std::fs::write(&rf, rows).map_err(|e| e.to_string())?;
+    println!("{}\n{}", cf.display(), rf.display());
+    Ok(())
+}
+
+/// `reconstruct`: what Jev most likely does with the request, as JSON.
+fn cmd_reconstruct(file: Option<PathBuf>) -> Result<(), String> {
+    let req = build_request(file, None, Vec::new(), Vec::new(), Vec::new())?;
+    let plan = reconstruction::compile(&req)?;
+    let branches: Vec<Value> = plan
+        .branches
+        .iter()
+        .map(|b| json!({"id": b.id, "kind": format!("{:?}", b.kind), "reads": b.prompt, "outcomes": b.outcomes}))
+        .collect();
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({
+            "preamble_tokens": reconstruction::PREAMBLE_TOKENS,
+            "document": plan.document,
+            "branches": branches,
+            "limits": {"state_plus_longest_question": reconstruction::BRANCH_LIMIT, "request": reconstruction::REQUEST_LIMIT},
+        }))
+        .unwrap()
+    );
+    Ok(())
+}
+
+/// `fit`: thresholds from recorded answers; the report, and the suggested
+/// policy to `out`.
+fn cmd_fit(rows: &Path, target: f64, out: Option<&Path>, json: bool) -> Result<(), String> {
+    if !(0.5..=1.0).contains(&target) {
+        return Err(format!("--target is {target}; it must be 0.5 to 1"));
+    }
+    let r = read_rows(rows)?;
+    if r.is_empty() {
+        return Err(format!("{}: no rows", rows.display()));
+    }
+    let fitted = fit::fit(&r, target);
+    if json {
+        println!("{}", serde_json::to_string_pretty(&fitted).unwrap());
+    } else {
+        print!("{}", fit::text(&fitted, target));
+    }
+    if let Some(p) = out {
+        let policy = fit::policy(&fitted);
+        policy.check()?;
+        std::fs::write(p, serde_json::to_string_pretty(&policy).unwrap() + "\n")
+            .map_err(|e| format!("{}: {e}", p.display()))?;
+        eprintln!("fit: the suggested policy is in {}", p.display());
+    }
+    Ok(())
+}
+
+/// `corroborate`: two recorded runs compared question by question.
+fn cmd_corroborate(a: &Path, b: &Path, pairs: bool, temperature: bool) -> Result<(), String> {
+    let (ra, rb) = (read_rows(a)?, read_rows(b)?);
+    let mut r = corroborate::compare(&ra, &rb);
+    if !pairs {
+        r.pairs.clear();
+    }
+    let mut v = serde_json::to_value(&r).unwrap();
+    if temperature {
+        v["temperature"] = serde_json::to_value(corroborate::fit_temperature(&ra, &rb)).unwrap();
+    }
+    println!("{}", serde_json::to_string_pretty(&v).unwrap());
+    Ok(())
+}
+
+/// `doctor`: the report, then exit 0 ready, 1 not. Never starts the server.
+fn cmd_doctor(client: &Client, fix: bool, prefix: &str) -> ! {
+    let prefix = match prefix.strip_prefix("~/") {
+        Some(rest) => PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(rest),
+        None => PathBuf::from(prefix),
+    };
+    println!(
+        "mjev doctor: Mechanical Jev at {}",
+        config::repo_root()
+            .map_or_else(|| "(not in a checkout)".into(), |p| p.display().to_string())
+    );
+    let (text, ready) = mechanical_jev::doctor::run(client, fix, &prefix);
+    print!("{text}");
+    std::process::exit(if ready { 0 } else { 1 });
+}
+
+/// `guard`: the hook's input on stdin, its decision on stdout or nothing;
+/// always exit 0, a failure's reason on stderr.
+fn cmd_guard(
+    client: Client,
+    mode: guard::Mode,
+    questions: Option<&Path>,
+    policy: Option<&Path>,
+    timeout: u64,
+) -> ! {
+    let said = (|| -> Result<Option<Value>, String> {
+        let q = match questions {
+            Some(p) => questions_file(p)?,
+            None => guard::questions(),
+        };
+        let p = policy_of(policy)?;
+        let mut input = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)
+            .map_err(|e| format!("stdin: {e}"))?;
+        let c = guard::client(client, std::time::Duration::from_secs(timeout));
+        guard::run(&c, &input, &q, &p, mode)
+    })();
+    match said {
+        Ok(Some(v)) => println!("{v}"),
+        Ok(None) => {}
+        // Out of the way: nothing on stdout, the reason on stderr.
+        Err(e) => eprintln!("mjev guard: {e}"),
+    }
+    std::process::exit(0);
+}
+
+/// The thresholds of `--policy`, else TypeSafe's worked examples.
+fn policy_of(path: Option<&Path>) -> Result<Policy, String> {
+    match path {
+        Some(p) => Policy::load(p),
+        None => Ok(Policy::default()),
+    }
+}
+
+/// A `--questions` file: the questions map, or a request holding one.
+fn questions_file(p: &Path) -> Result<Map<String, Value>, String> {
+    label::questions_of(
+        serde_json::from_str(
+            &std::fs::read_to_string(p).map_err(|e| format!("{}: {e}", p.display()))?,
+        )
+        .map_err(|e| format!("{}: {e}", p.display()))?,
+    )
+}
+
+/// A command that asks the server, with its inputs read and checked
+/// before the server is started (`run` builds it before `phi::ensure`).
+enum Job {
+    Query {
+        req: Request,
+        bars: bool,
+    },
+    Gate {
+        req: Request,
+        policy: Policy,
+        json: bool,
+    },
+    Label {
+        items: Vec<label::Item>,
+        questions: Map<String, Value>,
+        policy: Policy,
+        out: Option<PathBuf>,
+    },
+    Rank {
+        query: String,
+        candidates: Vec<String>,
+        top: Option<usize>,
+        instructions: Option<String>,
+        json: bool,
+    },
+    Eval {
+        file: PathBuf,
+        rows: Option<PathBuf>,
+        limit: Option<usize>,
+    },
+    Models,
+}
+
+impl Job {
+    fn run(self, client: &Client) -> Result<(), String> {
+        match self {
+            Job::Label {
+                items,
+                questions,
+                policy,
+                out,
+            } => {
+                let mut sink: Box<dyn std::io::Write> = match &out {
+                    Some(path) => Box::new(
+                        std::fs::File::create(path)
+                            .map_err(|e| format!("{}: {e}", path.display()))?,
+                    ),
+                    None => Box::new(std::io::stdout().lock()),
+                };
+                let t0 = Instant::now();
+                let tty = std::io::stderr().is_terminal();
+                let tally = label::run(
+                    client,
+                    &questions,
+                    &policy,
+                    &items,
+                    &mut sink,
+                    &mut |d, n| {
+                        if tty {
+                            eprint!("\rlabel: {d} of {n}");
+                        }
+                    },
+                )?;
                 if tty {
-                    eprint!("\rlabel: {d} of {n}");
+                    eprintln!();
                 }
-            })?;
-            if tty {
-                eprintln!();
-            }
-            eprintln!(
-                "label: {} states in {:.1} s: act {}, review {}, escalate {}, errors {}",
-                items.len(),
-                t0.elapsed().as_secs_f64(),
-                tally.act,
-                tally.review,
-                tally.escalate,
-                tally.errors
-            );
-            if tally.errors > 0 {
-                return Err(format!(
-                    "{} of {} states failed (their lines say why)",
-                    tally.errors,
-                    items.len()
-                ));
-            }
-            Ok(())
-        }
-        Cmd::Rank {
-            query,
-            top,
-            instructions,
-            json,
-            ..
-        } => {
-            let c = candidates.ok_or("no candidates were read")?;
-            let t0 = Instant::now();
-            let words = instructions.unwrap_or_else(|| rank::INSTRUCTIONS.to_string());
-            let mut ranked = rank::rank(&client, &query, &c, &words, &mut |_, _| {})?;
-            ranked.truncate(top.unwrap_or(ranked.len()));
-            if json {
-                println!("{}", serde_json::to_string_pretty(&ranked).unwrap());
-            } else {
-                for r in &ranked {
-                    println!("{:.2}  {:>4}  {}", r.p, r.index, r.text);
+                eprintln!(
+                    "label: {} states in {:.1} s: act {}, review {}, escalate {}, errors {}",
+                    items.len(),
+                    t0.elapsed().as_secs_f64(),
+                    tally.act,
+                    tally.review,
+                    tally.escalate,
+                    tally.errors
+                );
+                if tally.errors > 0 {
+                    return Err(format!(
+                        "{} of {} states failed (their lines say why)",
+                        tally.errors,
+                        items.len()
+                    ));
                 }
+                Ok(())
             }
-            eprintln!(
-                "rank: {} candidates in {:.1} s",
-                c.len(),
-                t0.elapsed().as_secs_f64()
-            );
-            Ok(())
-        }
-        Cmd::Gate { json, .. } => {
-            let (req, p) = request.zip(gate_policy).ok_or("no request was read")?;
-            let (resp, took) = client.system_one(&req).map_err(|e| e.to_string())?;
-            let v = p.judge(&policy::asked(&req)?, &resp)?;
-            if json {
+            Job::Rank {
+                query,
+                candidates,
+                top,
+                instructions,
+                json,
+            } => {
+                let t0 = Instant::now();
+                let words = instructions.unwrap_or_else(|| rank::INSTRUCTIONS.to_string());
+                let mut ranked = rank::rank(client, &query, &candidates, &words, &mut |_, _| {})?;
+                ranked.truncate(top.unwrap_or(ranked.len()));
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&ranked).unwrap());
+                } else {
+                    for r in &ranked {
+                        println!("{:.2}  {:>4}  {}", r.p, r.index, r.text);
+                    }
+                }
+                eprintln!(
+                    "rank: {} candidates in {:.1} s",
+                    candidates.len(),
+                    t0.elapsed().as_secs_f64()
+                );
+                Ok(())
+            }
+            Job::Gate {
+                req,
+                policy: p,
+                json,
+            } => {
+                let (resp, took) = client.system_one(&req).map_err(|e| e.to_string())?;
+                let v = p.judge(&policy::asked(&req)?, &resp)?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&v).unwrap());
+                } else {
+                    print!("{}", policy::text(&v));
+                }
+                eprintln!("{}: {:.1} ms", resp.model, took.as_secs_f64() * 1e3);
+                std::process::exit(v.outcome.exit_code());
+            }
+            Job::Query { req, bars } => {
+                let (resp, took) = client.system_one(&req).map_err(|e| e.to_string())?;
+                if bars {
+                    let text = mechanical_jev::tui::model::answers_text(&req, &resp.answers, 30);
+                    print!("{text}");
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+                }
+                eprintln!("{}: {:.1} ms", resp.model, took.as_secs_f64() * 1e3);
+                Ok(())
+            }
+            Job::Eval { file, rows, limit } => {
+                let mut cases = eval::load_cases(&file)?;
+                if let Some(n) = limit {
+                    cases.truncate(n);
+                }
+                let t0 = Instant::now();
+                let (r, failed) = eval::run(client, &cases).map_err(|e| e.to_string())?;
+                let wall = t0.elapsed().as_secs_f64();
+                let mut v = serde_json::to_value(eval::metrics(&r, failed)).unwrap();
+                v["model"] = json!(client.model);
+                v["cases"] = json!(cases.len());
+                v["wall_s"] = json!((wall * 100.0).round() / 100.0);
                 println!("{}", serde_json::to_string_pretty(&v).unwrap());
-            } else {
-                print!("{}", policy::text(&v));
+                if let Some(p) = rows {
+                    let text: String = r
+                        .iter()
+                        .map(|x| serde_json::to_string(x).unwrap() + "\n")
+                        .collect();
+                    std::fs::write(&p, text).map_err(|e| e.to_string())?;
+                }
+                Ok(())
             }
-            eprintln!("{}: {:.1} ms", resp.model, took.as_secs_f64() * 1e3);
-            std::process::exit(v.outcome.exit_code());
-        }
-        Cmd::Query { bars, .. } => {
-            let req = request.ok_or("no request was read")?;
-            let (resp, took) = client.system_one(&req).map_err(|e| e.to_string())?;
-            if bars {
-                let text = mechanical_jev::tui::model::answers_text(&req, &resp.answers, 30);
-                print!("{text}");
-            } else {
-                println!("{}", serde_json::to_string_pretty(&resp).unwrap());
+            Job::Models => {
+                let m = client.models().map_err(|e| e.to_string())?;
+                println!("{}", serde_json::to_string_pretty(&m).unwrap());
+                Ok(())
             }
-            eprintln!("{}: {:.1} ms", resp.model, took.as_secs_f64() * 1e3);
-            Ok(())
         }
-        Cmd::Eval { file, rows, limit } => {
-            let mut cases = eval::load_cases(&file)?;
-            if let Some(n) = limit {
-                cases.truncate(n);
-            }
-            let t0 = Instant::now();
-            let (r, failed) = eval::run(&client, &cases).map_err(|e| e.to_string())?;
-            let wall = t0.elapsed().as_secs_f64();
-            let mut v = serde_json::to_value(eval::metrics(&r, failed)).unwrap();
-            v["model"] = json!(client.model);
-            v["cases"] = json!(cases.len());
-            v["wall_s"] = json!((wall * 100.0).round() / 100.0);
-            println!("{}", serde_json::to_string_pretty(&v).unwrap());
-            if let Some(p) = rows {
-                let text: String = r
-                    .iter()
-                    .map(|x| serde_json::to_string(x).unwrap() + "\n")
-                    .collect();
-                std::fs::write(&p, text).map_err(|e| e.to_string())?;
-            }
-            Ok(())
-        }
-        Cmd::Models => {
-            let m = client.models().map_err(|e| e.to_string())?;
-            println!("{}", serde_json::to_string_pretty(&m).unwrap());
-            Ok(())
-        }
-        Cmd::Corroborate { .. }
-        | Cmd::Fit { .. }
-        | Cmd::Guard { .. }
-        | Cmd::Reconstruct { .. }
-        | Cmd::Evidence { .. }
-        | Cmd::Serve
-        | Cmd::Stop
-        | Cmd::Doctor { .. }
-        | Cmd::Tui { .. } => Ok(()),
     }
 }
 
